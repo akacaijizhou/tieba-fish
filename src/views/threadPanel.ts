@@ -6,11 +6,13 @@ import { TiebaService } from "../services/tiebaService";
 interface ThreadPanelState {
   thread: ThreadSummary;
   page: number;
+  onlyLz: boolean;
 }
 
 export interface ThreadPanelSession {
   thread: ThreadSummary;
   page: number;
+  onlyLz: boolean;
 }
 
 export class ThreadPanelManager {
@@ -21,17 +23,21 @@ export class ThreadPanelManager {
 
   async open(
     thread: ThreadSummary,
-    options?: { page?: number; preserveFocus?: boolean; recordHistory?: boolean }
+    options?: { page?: number; onlyLz?: boolean; preserveFocus?: boolean; recordHistory?: boolean }
   ): Promise<void> {
     if (options?.recordHistory !== false) {
       await this.service.recordHistory(thread);
     }
 
-    const previousPage = this.sessions.get(thread.threadId)?.page;
+    const previousSession = this.sessions.get(thread.threadId);
+    const previousPage = previousSession?.page;
+    const previousOnlyLz = previousSession?.onlyLz;
     const page = Math.max(1, options?.page ?? previousPage ?? 1);
+    const onlyLz = options?.onlyLz ?? previousOnlyLz ?? false;
     this.sessions.set(thread.threadId, {
       thread,
-      page
+      page,
+      onlyLz
     });
 
     const existing = this.panels.get(thread.threadId);
@@ -43,8 +49,8 @@ export class ThreadPanelManager {
           favorite: this.service.isFavorite(thread.threadId)
         }
       });
-      if (previousPage !== page) {
-        await this.loadThread(existing, { thread, page }, false);
+      if (previousPage !== page || previousOnlyLz !== onlyLz) {
+        await this.loadThread(existing, { thread, page, onlyLz }, false);
       }
       return;
     }
@@ -73,13 +79,32 @@ export class ThreadPanelManager {
     panel.webview.onDidReceiveMessage(async (message) => {
       switch (message.type) {
         case "ready":
-          await this.loadThread(panel, { thread, page }, false);
+          await this.loadThread(panel, { thread, page, onlyLz }, false);
           break;
         case "refreshThread":
-          await this.loadThread(panel, { thread, page: message.payload.page ?? 1 }, true);
+          await this.loadThread(
+            panel,
+            {
+              thread,
+              page: Math.max(1, Number(message.payload?.page ?? 1) || 1),
+              onlyLz: Boolean(message.payload?.onlyLz)
+            },
+            true
+          );
           break;
         case "loadThreadPage":
-          await this.loadThread(panel, { thread, page: message.payload.page ?? 1 }, false);
+          await this.loadThread(panel, {
+            thread,
+            page: Math.max(1, Number(message.payload?.page ?? 1) || 1),
+            onlyLz: Boolean(message.payload?.onlyLz)
+          }, false);
+          break;
+        case "toggleOnlyLz":
+          await this.loadThread(panel, {
+            thread,
+            page: Math.max(1, Number(message.payload?.page ?? 1) || 1),
+            onlyLz: Boolean(message.payload?.onlyLz)
+          }, false);
           break;
         case "toggleImages":
           {
@@ -164,7 +189,8 @@ export class ThreadPanelManager {
   captureSessions(): ThreadPanelSession[] {
     return Array.from(this.sessions.values()).map((session) => ({
       thread: session.thread,
-      page: session.page
+      page: session.page,
+      onlyLz: session.onlyLz
     }));
   }
 
@@ -206,7 +232,8 @@ export class ThreadPanelManager {
           threadId: state.thread.threadId,
           forumName: state.thread.forumName,
           page: state.page,
-          sourceUrl: state.page === 1 ? state.thread.url : undefined
+          sourceUrl: state.page === 1 && !state.onlyLz ? state.thread.url : undefined,
+          onlyLz: state.onlyLz
         },
         forceRefresh
       );
@@ -218,7 +245,8 @@ export class ThreadPanelManager {
       };
       this.sessions.set(state.thread.threadId, {
         thread: updatedThread,
-        page: detail.page
+        page: detail.page,
+        onlyLz: Boolean(detail.onlyLz)
       });
       await this.service.recordReadingSession(updatedThread, detail.page);
       panel.webview.postMessage({

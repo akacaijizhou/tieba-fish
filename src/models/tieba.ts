@@ -84,6 +84,7 @@ export interface ThreadDetailPage {
   threadAuthorId?: string;
   page: number;
   pageCount?: number;
+  onlyLz?: boolean;
   posts: PostItem[];
   sourceUrl: string;
 }

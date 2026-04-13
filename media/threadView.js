@@ -172,7 +172,7 @@
   function renderLoaded() {
     const detail = state.detail;
     const visiblePosts = getVisiblePosts();
-    const pageCount = state.onlyLz ? "1" : detail.pageCount || "";
+    const pageCount = detail.pageCount || "";
 
     return `
       <section class="list-shell">
@@ -182,7 +182,7 @@
             : visiblePosts.map(renderPost).join("")}
         </div>
         <div class="footer-nav">
-          <button class="button" data-action="prev"${state.onlyLz || detail.page <= 1 ? " disabled" : ""}>上一页</button>
+          <button class="button" data-action="prev"${detail.page <= 1 ? " disabled" : ""}>上一页</button>
           <div class="footer-tools">
             <div class="hint">只保留正文、图片和楼中楼</div>
             <div class="page-jump">
@@ -193,14 +193,13 @@
                 type="number"
                 min="1"
                 ${pageCount ? `max="${escapeHtml(pageCount)}"` : ""}
-                value="${escapeHtml(state.onlyLz ? 1 : detail.page || 1)}"
-                ${state.onlyLz ? "disabled" : ""}
+                value="${escapeHtml(detail.page || 1)}"
               />
               <span class="hint">页</span>
-              <button class="button button-subtle" data-action="jumpPage"${state.onlyLz ? " disabled" : ""}>跳转</button>
+              <button class="button button-subtle" data-action="jumpPage">跳转</button>
             </div>
           </div>
-          <button class="button" data-action="next"${state.onlyLz || (detail.pageCount && detail.page >= detail.pageCount) ? " disabled" : ""}>下一页</button>
+          <button class="button" data-action="next"${detail.pageCount && detail.page >= detail.pageCount ? " disabled" : ""}>下一页</button>
         </div>
       </section>
     `;
@@ -212,7 +211,9 @@
     const replyCount = sourceThread?.replyCount || 0;
 
     if (state.onlyLz) {
-      return `${escapeHtml(forumName)}吧 · 楼主 ${escapeHtml(heroAuthor)} · 回复 ${escapeHtml(replyCount)} · 第 1 页 / 1 · 当前页命中 ${escapeHtml(
+      return `${escapeHtml(forumName)}吧 · 楼主 ${escapeHtml(heroAuthor)} · 回复 ${escapeHtml(replyCount)} · 只看楼主 · 第 ${escapeHtml(
+        detail?.page || 1
+      )} 页${detail?.pageCount ? ` / ${escapeHtml(detail.pageCount)}` : ""} · 当前页 ${escapeHtml(
         visiblePosts.length
       )} 层`;
     }
@@ -272,7 +273,7 @@
         const action = element.getAttribute("data-action");
         const page = state.detail?.page || 1;
         if (action === "refresh") {
-          send("refreshThread", { page });
+          send("refreshThread", { page, onlyLz: state.onlyLz });
         }
         if (action === "favorite") {
           send("favoriteThread");
@@ -287,15 +288,12 @@
           send("openExternal");
         }
         if (action === "prev" && page > 1) {
-          send("loadThreadPage", { page: page - 1 });
+          send("loadThreadPage", { page: page - 1, onlyLz: state.onlyLz });
         }
-        if (action === "next" && !state.onlyLz) {
-          send("loadThreadPage", { page: page + 1 });
+        if (action === "next") {
+          send("loadThreadPage", { page: page + 1, onlyLz: state.onlyLz });
         }
         if (action === "jumpPage") {
-          if (state.onlyLz) {
-            return;
-          }
           const input = app.querySelector("[data-role='pageJumpInput']");
           const raw = Number.parseInt(input?.value || "", 10);
           if (!Number.isFinite(raw) || raw <= 0) {
@@ -308,7 +306,7 @@
             return;
           }
 
-          send("loadThreadPage", { page: targetPage });
+          send("loadThreadPage", { page: targetPage, onlyLz: state.onlyLz });
         }
         if (action === "onlyLz") {
           const currentPage = state.detail?.page || 1;
@@ -326,33 +324,30 @@
                 error: null
               };
               render();
-              send("loadThreadPage", { page: 1 });
+              send("toggleOnlyLz", { page: 1, onlyLz: true });
               return;
             }
 
-            render();
-            return;
-          }
-
-          const restorePage = state.lastFullPageBeforeOnlyLz;
-          state = {
-            ...state,
-            onlyLz: false,
-            lastFullPageBeforeOnlyLz: null
-          };
-
-          if (restorePage && restorePage > 1 && currentPage === 1) {
             state = {
               ...state,
               loading: true,
               error: null
             };
             render();
-            send("loadThreadPage", { page: restorePage });
+            send("toggleOnlyLz", { page: 1, onlyLz: true });
             return;
           }
 
+          const restorePage = state.lastFullPageBeforeOnlyLz || currentPage;
+          state = {
+            ...state,
+            onlyLz: false,
+            lastFullPageBeforeOnlyLz: null,
+            loading: true,
+            error: null
+          };
           render();
+          send("toggleOnlyLz", { page: restorePage, onlyLz: false });
           return;
         }
         if (action === "backToTop") {
@@ -472,8 +467,9 @@
         loading: false,
         error: null,
         detail: payload,
+        onlyLz: !!payload.onlyLz,
         favorite: payload.favorite,
-        lastFullPageBeforeOnlyLz: state.onlyLz ? state.lastFullPageBeforeOnlyLz : null,
+        lastFullPageBeforeOnlyLz: payload.onlyLz ? state.lastFullPageBeforeOnlyLz : null,
         expandedComments: {},
         postComments: {},
         lightboxSrc: null,

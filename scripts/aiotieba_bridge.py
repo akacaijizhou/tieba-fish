@@ -53,8 +53,8 @@ def build_forum_url(forum_name: str, page: int) -> str:
     return f"https://tieba.baidu.com/f?kw={quote(forum_name)}&pn={pn}"
 
 
-def build_thread_url(thread_id: str | int, page: int) -> str:
-    return f"https://tieba.baidu.com/p/{quote(str(thread_id))}?pn={page}"
+def build_thread_url(thread_id: str | int, page: int, only_lz: bool = False) -> str:
+    return f"https://tieba.baidu.com/p/{quote(str(thread_id))}?pn={page}{'&see_lz=1' if only_lz else ''}"
 
 
 def ensure_aiotieba_import() -> Any:
@@ -422,15 +422,22 @@ async def handle_get_thread_detail(tb: Any, request: dict[str, Any]) -> dict[str
     auth = request["auth"]
     thread_id = int(payload["threadId"])
     page = max(1, int(payload.get("page", 1)))
+    only_lz = bool(payload.get("onlyLz"))
 
     async with tb.Client(auth.get("bduss", ""), auth.get("stoken", "")) as client:
         with_comments = bool(auth.get("bduss"))
         try:
-            posts = await client.get_posts(thread_id, page, with_comments=with_comments, comment_rn=3)
+            posts = await client.get_posts(
+                thread_id,
+                page,
+                with_comments=with_comments,
+                comment_rn=3,
+                only_thread_author=only_lz,
+            )
         except Exception:
             if not with_comments:
                 raise
-            posts = await client.get_posts(thread_id, page, with_comments=False)
+            posts = await client.get_posts(thread_id, page, with_comments=False, only_thread_author=only_lz)
 
     thread = getattr(posts, "thread", None)
     forum = getattr(posts, "forum", None)
@@ -441,7 +448,7 @@ async def handle_get_thread_detail(tb: Any, request: dict[str, Any]) -> dict[str
     thread_author_id = getattr(thread, "author_id", 0)
 
     reply_count = int(getattr(thread, "reply_num", 0) or 0)
-    if not getattr(page_info, "total_page", 0) and reply_count:
+    if not only_lz and not getattr(page_info, "total_page", 0) and reply_count:
         total_page = math.ceil(max(1, reply_count) / 30)
     else:
         total_page = int(getattr(page_info, "total_page", 0) or 0)
@@ -454,8 +461,9 @@ async def handle_get_thread_detail(tb: Any, request: dict[str, Any]) -> dict[str
         "threadAuthorId": author_id_value(getattr(thread, "user", None), thread_author_id),
         "page": int(getattr(page_info, "current_page", 0) or page),
         "pageCount": total_page or None,
+        "onlyLz": only_lz,
         "posts": [map_post(post) for post in posts],
-        "sourceUrl": build_thread_url(thread_id, page),
+        "sourceUrl": build_thread_url(thread_id, int(getattr(page_info, "current_page", 0) or page), only_lz),
     }
 
 

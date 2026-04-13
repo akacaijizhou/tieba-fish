@@ -7,6 +7,7 @@ export interface TiebaDataSource {
     forumName?: string;
     page: number;
     sourceUrl?: string;
+    onlyLz?: boolean;
   }): Promise<ThreadDetailPage>;
   getPostComments(input: {
     threadId: string;

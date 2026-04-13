@@ -23,10 +23,15 @@ export class LiveTiebaDataSource implements TiebaDataSource {
     forumName?: string;
     page: number;
     sourceUrl?: string;
+    onlyLz?: boolean;
   }): Promise<ThreadDetailPage> {
-    const sourceUrl = input.sourceUrl ?? buildThreadUrl(input.threadId, input.page);
+    const sourceUrl = input.sourceUrl ?? buildThreadUrl(input.threadId, input.page, input.onlyLz);
     const html = await fetchText(sourceUrl, this.getCookie);
-    return parseThreadDetail(html, input.threadId, input.forumName, input.page, sourceUrl);
+    const detail = parseThreadDetail(html, input.threadId, input.forumName, input.page, sourceUrl);
+    return {
+      ...detail,
+      onlyLz: !!input.onlyLz
+    };
   }
 
   async getPostComments(_input: { threadId: string; postId: string; page?: number }): Promise<PostCommentsPage> {
@@ -39,8 +44,8 @@ export function buildForumUrl(forumName: string, page = 1): string {
   return `https://tieba.baidu.com/f?kw=${encodeURIComponent(forumName)}&pn=${pn}`;
 }
 
-export function buildThreadUrl(threadId: string, page = 1): string {
-  return `https://tieba.baidu.com/p/${encodeURIComponent(threadId)}?pn=${page}`;
+export function buildThreadUrl(threadId: string, page = 1, onlyLz = false): string {
+  return `https://tieba.baidu.com/p/${encodeURIComponent(threadId)}?pn=${page}${onlyLz ? "&see_lz=1" : ""}`;
 }
 
 async function fetchText(url: string, getCookie: () => Promise<string | undefined>): Promise<string> {

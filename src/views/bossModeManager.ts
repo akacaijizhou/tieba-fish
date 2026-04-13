@@ -119,6 +119,7 @@ export class BossModeManager {
 
       await this.threadPanels.open(session.thread, {
         page: session.page,
+        onlyLz: session.onlyLz,
         preserveFocus: true,
         recordHistory: false
       });
@@ -134,6 +135,7 @@ export class BossModeManager {
     if (activeThread) {
       await this.threadPanels.open(activeThread.thread, {
         page: activeThread.page,
+        onlyLz: activeThread.onlyLz,
         recordHistory: false
       });
     }

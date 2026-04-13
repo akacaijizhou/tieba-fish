@@ -30,6 +30,7 @@ interface BridgeRequest {
         forumName?: string;
         page: number;
         sourceUrl?: string;
+        onlyLz?: boolean;
       }
     | {
         threadId: string;
@@ -104,6 +105,7 @@ export class PythonAiotiebaDataSource implements TiebaDataSource {
     forumName?: string;
     page: number;
     sourceUrl?: string;
+    onlyLz?: boolean;
   }): Promise<ThreadDetailPage> {
     return this.callBridge<ThreadDetailPage>({
       action: "getThreadDetail",

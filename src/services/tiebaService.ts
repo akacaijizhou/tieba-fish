@@ -376,10 +376,10 @@ export class TiebaService {
   }
 
   async getThreadDetail(
-    input: { threadId: string; forumName?: string; page: number; sourceUrl?: string },
+    input: { threadId: string; forumName?: string; page: number; sourceUrl?: string; onlyLz?: boolean },
     forceRefresh = false
   ): Promise<ThreadDetailPage> {
-    const cacheKey = `${input.threadId}:${input.page}`;
+    const cacheKey = `${input.threadId}:${input.page}:lz=${input.onlyLz ? 1 : 0}`;
     const ttlMs = this.getCacheTtlMs();
     if (!forceRefresh && ttlMs > 0) {
       const cached = this.threadCache.get(cacheKey);
