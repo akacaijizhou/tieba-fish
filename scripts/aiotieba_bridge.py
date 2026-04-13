@@ -240,6 +240,26 @@ def author_id_value(user: Any, fallback_author_id: int | None = None) -> str | N
     return None
 
 
+def handle_health_check(tb: Any) -> dict[str, Any]:
+    module_file = pathlib.Path(getattr(tb, "__file__", "")).resolve() if getattr(tb, "__file__", "") else None
+    module_path = str(module_file) if module_file else ""
+    load_mode = "installed"
+
+    if module_file:
+        try:
+            module_file.relative_to(LOCAL_AIOTIEBA_PATH.resolve())
+            load_mode = "local"
+        except ValueError:
+            load_mode = "installed"
+
+    return {
+        "available": True,
+        "version": str(getattr(tb, "__version__", "") or ""),
+        "modulePath": module_path,
+        "loadMode": load_mode,
+    }
+
+
 def map_thread_summary(thread: Any, forum_name: str) -> dict[str, Any]:
     content_text = getattr(getattr(thread, "contents", None), "text", "") or ""
     thread_id = getattr(thread, "tid")
@@ -430,6 +450,8 @@ async def handle_resolve_forum_names(tb: Any, request: dict[str, Any]) -> dict[s
 
 async def dispatch(tb: Any, request: dict[str, Any]) -> dict[str, Any]:
     action = request.get("action")
+    if action == "healthCheck":
+        return handle_health_check(tb)
     if action == "getForumThreads":
         return await handle_get_forum_threads(tb, request)
     if action == "getThreadDetail":

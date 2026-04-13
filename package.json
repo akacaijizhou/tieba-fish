@@ -23,6 +23,7 @@
     "onCommand:tieba.configureCookie",
     "onCommand:tieba.clearCookie",
     "onCommand:tieba.bossKey",
+    "onCommand:tieba.openDiagnostics",
     "onCommand:tieba.openThreadByUrl",
     "onCommand:tieba.openForum",
     "onCommand:tieba.openThread"
@@ -146,6 +147,11 @@
         "command": "tieba.bossKey",
         "title": "Tieba: 老板键",
         "category": "Tieba"
+      },
+      {
+        "command": "tieba.openDiagnostics",
+        "title": "Tieba: 打开环境诊断",
+        "category": "Tieba"
       }
     ],
     "keybindings": [
@@ -201,6 +207,10 @@
         },
         {
           "command": "tieba.openThreadByUrl",
+          "when": "true"
+        },
+        {
+          "command": "tieba.openDiagnostics",
           "when": "true"
         },
         {

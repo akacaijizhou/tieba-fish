@@ -1,8 +1,9 @@
 import * as vscode from "vscode";
 import { ForumSubscription, OpenTarget, ThreadSummary } from "./models/tieba";
-import { ForumNameSuggestion, TiebaService } from "./services/tiebaService";
+import { ForumNameSuggestion, TiebaService, TiebaStatusSnapshot } from "./services/tiebaService";
 import { BossFilesProvider } from "./views/bossFilesProvider";
 import { BossModeManager } from "./views/bossModeManager";
+import { DiagnosticsPanel } from "./views/diagnosticsPanel";
 import { FollowedForumsProvider } from "./views/followedForumsProvider";
 import { ForumPanelManager } from "./views/forumPanel";
 import { HistoryViewProvider } from "./views/historyViewProvider";
@@ -19,8 +20,22 @@ export function activate(context: vscode.ExtensionContext): void {
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri ?? context.extensionUri;
   const bossFilesProvider = new BossFilesProvider(vscode.Uri.joinPath(workspaceRoot, "client-dashboard"));
   const bossMode = new BossModeManager(context, forumPanels, threadPanels);
+  const diagnosticsPanel = new DiagnosticsPanel(context, service);
+  const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10);
+  statusBarItem.command = "tieba.openDiagnostics";
+  statusBarItem.name = "Tieba 状态";
+  statusBarItem.show();
+  context.subscriptions.push(statusBarItem);
 
   void vscode.commands.executeCommand("setContext", "tieba.bossModeEnabled", false);
+
+  const refreshStatusBar = async (): Promise<void> => {
+    const snapshot = await service.getStatusSnapshot();
+    statusBarItem.text = buildTiebaStatusBarText(snapshot);
+    statusBarItem.tooltip = buildTiebaStatusBarTooltip(snapshot);
+  };
+
+  void refreshStatusBar();
 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider("tieba.forums", followedForumsProvider),
@@ -34,6 +49,10 @@ export function activate(context: vscode.ExtensionContext): void {
       followedForumsProvider.refresh();
       latestViewProvider.refresh();
       historyViewProvider.refresh();
+      void refreshStatusBar();
+    }),
+    service.onDidChangeStatus(() => {
+      void refreshStatusBar();
     })
   );
 
@@ -44,6 +63,7 @@ export function activate(context: vscode.ExtensionContext): void {
         latestViewProvider.refresh();
         historyViewProvider.refresh();
         threadPanels.broadcastSettings();
+        void refreshStatusBar();
       }
     })
   );
@@ -272,6 +292,10 @@ export function activate(context: vscode.ExtensionContext): void {
       await openThreadFromInput(threadPanels);
     }),
 
+    vscode.commands.registerCommand("tieba.openDiagnostics", async () => {
+      await diagnosticsPanel.open();
+    }),
+
     vscode.commands.registerCommand("tieba.openExternal", async (target?: OpenTarget) => {
       const url = resolveUrl(service, target);
       if (!url) {
@@ -384,6 +408,41 @@ function validateCookieInput(input: string): string | undefined {
   }
 
   return undefined;
+}
+
+function buildTiebaStatusBarText(snapshot: TiebaStatusSnapshot): string {
+  const authLabel = snapshot.hasBduss ? "已登录" : "匿名";
+  const sourceLabel =
+    snapshot.lastResolvedSource === "aiotieba"
+      ? "aiotieba"
+      : snapshot.lastResolvedSource === "web"
+        ? "网页回退"
+        : "未诊断";
+  const icon =
+    snapshot.lastResolvedSource === "aiotieba"
+      ? "$(check)"
+      : snapshot.lastResolvedSource === "web"
+        ? "$(warning)"
+        : "$(circle-outline)";
+
+  return `${icon} Tieba ${authLabel} · ${sourceLabel}`;
+}
+
+function buildTiebaStatusBarTooltip(snapshot: TiebaStatusSnapshot): vscode.MarkdownString {
+  const markdown = new vscode.MarkdownString(undefined, true);
+  markdown.isTrusted = true;
+  markdown.appendMarkdown("**Tieba 当前状态**\n\n");
+  markdown.appendMarkdown(`- 账号：${snapshot.hasBduss ? "已配置 BDUSS" : "未配置 BDUSS"}\n`);
+  markdown.appendMarkdown(`- STOKEN：${snapshot.hasStoken ? "已配置" : "未配置"}\n`);
+  markdown.appendMarkdown(`- Cookie：${snapshot.hasCookie ? "已配置" : "未配置"}\n`);
+  markdown.appendMarkdown(
+    `- 当前数据源：${snapshot.lastResolvedSource === "aiotieba" ? "aiotieba" : snapshot.lastResolvedSource === "web" ? "网页回退" : "尚未产生读取记录"}\n`
+  );
+  if (snapshot.lastFailure) {
+    markdown.appendMarkdown(`- 最近失败：${snapshot.lastFailure.message}\n`);
+  }
+  markdown.appendMarkdown("\n点击打开环境诊断。");
+  return markdown;
 }
 
 async function openThreadFromInput(threadPanels: ThreadPanelManager): Promise<void> {

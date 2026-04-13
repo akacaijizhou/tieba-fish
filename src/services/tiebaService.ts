@@ -32,6 +32,33 @@ export interface ForumNameSuggestion {
   hint: string;
 }
 
+export type TiebaResolvedSource = "aiotieba" | "web";
+
+export interface TiebaStatusSnapshot {
+  hasBduss: boolean;
+  hasStoken: boolean;
+  hasCookie: boolean;
+  lastResolvedSource?: TiebaResolvedSource;
+  lastResolvedAt?: number;
+  lastFailure?: {
+    code: string;
+    message: string;
+    at: number;
+  };
+}
+
+export interface TiebaDiagnosticsReport extends TiebaStatusSnapshot {
+  bridge: {
+    available: boolean;
+    version?: string;
+    modulePath?: string;
+    loadMode?: "installed" | "local";
+    pythonPath: string;
+    message: string;
+  };
+  settings: TiebaSettings;
+}
+
 export class TiebaService {
   private readonly forumsStore: ForumsStore;
   private readonly favoritesStore: FavoritesStore;
@@ -44,8 +71,13 @@ export class TiebaService {
   private readonly liveDataSource: TiebaDataSource;
   private readonly bridgeDataSource: PythonAiotiebaDataSource;
   private readonly changeEmitter = new vscode.EventEmitter<void>();
+  private readonly statusEmitter = new vscode.EventEmitter<void>();
+  private lastResolvedSource?: TiebaResolvedSource;
+  private lastResolvedAt?: number;
+  private lastFailure?: TiebaStatusSnapshot["lastFailure"];
 
   readonly onDidChange = this.changeEmitter.event;
+  readonly onDidChangeStatus = this.statusEmitter.event;
 
   constructor(context: vscode.ExtensionContext) {
     this.forumsStore = new ForumsStore(context);
@@ -86,6 +118,35 @@ export class TiebaService {
 
   getSettings(): TiebaSettings {
     return this.settingsStore.get();
+  }
+
+  async getStatusSnapshot(): Promise<TiebaStatusSnapshot> {
+    const [auth, cookie] = await Promise.all([this.authStore.getAccountAuth(), this.authStore.getCookie()]);
+    return {
+      hasBduss: Boolean(auth.bduss),
+      hasStoken: Boolean(auth.stoken),
+      hasCookie: Boolean(cookie),
+      lastResolvedSource: this.lastResolvedSource,
+      lastResolvedAt: this.lastResolvedAt,
+      lastFailure: this.lastFailure
+    };
+  }
+
+  async getDiagnosticsReport(): Promise<TiebaDiagnosticsReport> {
+    const [status, bridge, pythonPath] = await Promise.all([
+      this.getStatusSnapshot(),
+      this.getBridgeHealthCheck(),
+      Promise.resolve(vscode.workspace.getConfiguration("tieba").get<string>("pythonPath")?.trim() || "python")
+    ]);
+
+    return {
+      ...status,
+      bridge: {
+        ...bridge,
+        pythonPath
+      },
+      settings: this.getSettings()
+    };
   }
 
   async toggleImages(): Promise<TiebaSettings> {
@@ -169,24 +230,28 @@ export class TiebaService {
     await this.authStore.setAccountAuth(input);
     await this.clearCaches();
     this.changeEmitter.fire();
+    this.statusEmitter.fire();
   }
 
   async clearAccountAuth(): Promise<void> {
     await this.authStore.clearAccountAuth();
     await this.clearCaches();
     this.changeEmitter.fire();
+    this.statusEmitter.fire();
   }
 
   async saveCookie(cookie: string): Promise<void> {
     await this.authStore.setCookie(cookie);
     await this.clearCaches();
     this.changeEmitter.fire();
+    this.statusEmitter.fire();
   }
 
   async clearCookie(): Promise<void> {
     await this.authStore.clearCookie();
     await this.clearCaches();
     this.changeEmitter.fire();
+    this.statusEmitter.fire();
   }
 
   async getForumThreads(forumName: string, page: number, forceRefresh = false): Promise<ForumThreadPage> {
@@ -334,15 +399,65 @@ export class TiebaService {
 
   private async loadFromPreferredSources<T>(load: (source: TiebaDataSource) => Promise<T>): Promise<T> {
     const errors: TiebaError[] = [];
-    for (const source of [this.bridgeDataSource, this.liveDataSource]) {
+    const sources: Array<{ source: TiebaDataSource; name: TiebaResolvedSource }> = [
+      { source: this.bridgeDataSource, name: "aiotieba" },
+      { source: this.liveDataSource, name: "web" }
+    ];
+
+    for (const candidate of sources) {
       try {
-        return await load(source);
+        const result = await load(candidate.source);
+        this.recordResolvedSource(candidate.name);
+        return result;
       } catch (error) {
         errors.push(normalizeTiebaError(error));
       }
     }
 
-    throw combineDataSourceErrors(errors);
+    const combined = combineDataSourceErrors(errors);
+    this.recordFailure(combined);
+    throw combined;
+  }
+
+  private async getBridgeHealthCheck(): Promise<Omit<TiebaDiagnosticsReport["bridge"], "pythonPath">> {
+    try {
+      const result = await this.bridgeDataSource.healthCheck();
+      return {
+        available: Boolean(result.available),
+        version: result.version,
+        modulePath: result.modulePath,
+        loadMode: result.loadMode,
+        message:
+          result.loadMode === "local"
+            ? "aiotieba bridge 可用，当前通过项目内 aiotieba-master 回退导入。"
+            : "aiotieba bridge 可用，当前通过已安装的 Python 包运行。"
+      };
+    } catch (error) {
+      const normalized = normalizeTiebaError(error);
+      return {
+        available: false,
+        message: normalized.message
+      };
+    }
+  }
+
+  private recordResolvedSource(source: TiebaResolvedSource): void {
+    const changed = this.lastResolvedSource !== source || Boolean(this.lastFailure) || !this.lastResolvedAt;
+    this.lastResolvedSource = source;
+    this.lastResolvedAt = Date.now();
+    this.lastFailure = undefined;
+    if (changed) {
+      this.statusEmitter.fire();
+    }
+  }
+
+  private recordFailure(error: TiebaError): void {
+    this.lastFailure = {
+      code: error.code,
+      message: error.message,
+      at: Date.now()
+    };
+    this.statusEmitter.fire();
   }
 }
 

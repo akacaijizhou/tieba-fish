@@ -8,12 +8,13 @@ import { TiebaError, TiebaErrorCode } from "../errors";
 import { TiebaDataSource } from "./tiebaDataSource";
 
 interface BridgeRequest {
-  action: "getForumThreads" | "getThreadDetail" | "getPostComments" | "resolveForumNames";
+  action: "healthCheck" | "getForumThreads" | "getThreadDetail" | "getPostComments" | "resolveForumNames";
   auth: {
     bduss?: string;
     stoken?: string;
   };
   payload:
+    | Record<string, never>
     | {
         forumName: string;
         page: number;
@@ -49,6 +50,13 @@ interface BridgeFailure {
 }
 
 type BridgeResponse<T> = BridgeSuccess<T> | BridgeFailure;
+
+export interface BridgeHealthCheckResult {
+  available: boolean;
+  version?: string;
+  modulePath?: string;
+  loadMode?: "installed" | "local";
+}
 
 export class PythonAiotiebaDataSource implements TiebaDataSource {
   private readonly scriptPath: string;
@@ -100,6 +108,14 @@ export class PythonAiotiebaDataSource implements TiebaDataSource {
     });
 
     return Array.isArray(result.names) ? result.names : [];
+  }
+
+  async healthCheck(): Promise<BridgeHealthCheckResult> {
+    return this.callBridge<BridgeHealthCheckResult>({
+      action: "healthCheck",
+      auth: await this.getBridgeAuth(),
+      payload: {}
+    });
   }
 
   private async getBridgeAuth(): Promise<{ bduss?: string; stoken?: string }> {
