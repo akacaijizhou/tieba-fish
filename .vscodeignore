@@ -3,7 +3,6 @@
 .vscode/**
 docs/**
 src/**
-client-dashboard/**
 README_mock.md
 .tmp_*
 tsconfig.json

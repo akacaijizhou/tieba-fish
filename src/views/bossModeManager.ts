@@ -22,8 +22,7 @@ export class BossModeManager {
     private readonly forumPanels: ForumPanelManager,
     private readonly threadPanels: ThreadPanelManager
   ) {
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri ?? context.extensionUri;
-    this.fakeRootUri = vscode.Uri.joinPath(workspaceRoot, "client-dashboard");
+    this.fakeRootUri = vscode.Uri.joinPath(context.extensionUri, "client-dashboard");
     this.fakeFileUris = [
       vscode.Uri.joinPath(this.fakeRootUri, "package.json"),
       vscode.Uri.joinPath(this.fakeRootUri, "src", "app.ts"),

@@ -29,8 +29,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const historyViewProvider = new HistoryViewProvider(service);
   const forumPanels = new ForumPanelManager(context, service);
   const threadPanels = new ThreadPanelManager(context, service);
-  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri ?? context.extensionUri;
-  const bossFilesProvider = new BossFilesProvider(vscode.Uri.joinPath(workspaceRoot, "client-dashboard"));
+  const bossFilesProvider = new BossFilesProvider(vscode.Uri.joinPath(context.extensionUri, "client-dashboard"));
   const bossMode = new BossModeManager(context, forumPanels, threadPanels);
   const diagnosticsPanel = new DiagnosticsPanel(context, service);
   const onboardingPanel = new OnboardingPanel(context, service);
