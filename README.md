@@ -22,19 +22,19 @@ Tieba Fish 不是把贴吧网页原样塞进编辑器，而是尽量用更轻、
 
 第一次打开时，插件会告诉你当前能不能直接用、还缺什么、下一步该点什么。
 
-![Tieba 首次引导](./ScreenShot_2026-04-13_172605_949.png)
+![Tieba 首次引导](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/ScreenShot_2026-04-13_172605_949.png)
 
 ### 登录态导入
 
 推荐直接从浏览器里复制完整贴吧 Cookie，再导入到插件里。
 
-![贴吧 Cookie 获取示例](./ScreenShot_2026-04-13_172725_366.png)
+![贴吧 Cookie 获取示例](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/ScreenShot_2026-04-13_172725_366.png)
 
 ### 一键安装 aiotieba
 
 如果机器上已经有 Python，但还没装 `aiotieba`，可以直接在插件里一键安装。
 
-![安装 aiotieba 引导](./ScreenShot_2026-04-13_172813_277.png)
+![安装 aiotieba 引导](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/ScreenShot_2026-04-13_172813_277.png)
 
 ## 安装方式
 
