@@ -1,17 +1,32 @@
 {
-  "name": "vscode-tieba",
+  "name": "tieba-fish",
   "displayName": "Tieba Fish",
   "description": "在 VS Code 里低打扰地看百度贴吧。",
   "version": "0.0.1",
-  "publisher": "local",
+  "publisher": "akacjz",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akacaijizhou/tieba-fish.git"
+  },
+  "homepage": "https://github.com/akacaijizhou/tieba-fish",
+  "bugs": {
+    "url": "https://github.com/akacaijizhou/tieba-fish/issues"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
     "Other"
   ],
-  "icon": "resources/tieba.svg",
+  "keywords": [
+    "tieba",
+    "baidu",
+    "reader",
+    "boss-mode",
+    "fish"
+  ],
+  "icon": "resources/icon.png",
   "main": "./out/extension.js",
   "activationEvents": [
     "onView:tieba.forums",
@@ -26,7 +41,12 @@
     "onCommand:tieba.clearCookie",
     "onCommand:tieba.bossKey",
     "onCommand:tieba.openDiagnostics",
+    "onCommand:tieba.openOnboarding",
+    "onCommand:tieba.installAiotieba",
+    "onCommand:tieba.openPythonDownload",
+    "onCommand:tieba.resetOnboardingAndReload",
     "onCommand:tieba.openThreadByUrl",
+    "onCommand:tieba.continueReading",
     "onCommand:tieba.openForum",
     "onCommand:tieba.openThread"
   ],
@@ -36,7 +56,7 @@
         {
           "id": "tieba",
           "title": "Tieba",
-          "icon": "resources/tieba.svg"
+          "icon": "resources/icon.png"
         }
       ]
     },
@@ -126,6 +146,10 @@
         "title": "浏览指定链接"
       },
       {
+        "command": "tieba.continueReading",
+        "title": "继续阅读"
+      },
+      {
         "command": "tieba.openExternal",
         "title": "在浏览器打开"
       },
@@ -144,6 +168,22 @@
       {
         "command": "tieba.openDiagnostics",
         "title": "打开环境诊断"
+      },
+      {
+        "command": "tieba.openOnboarding",
+        "title": "打开首次引导"
+      },
+      {
+        "command": "tieba.installAiotieba",
+        "title": "安装 aiotieba"
+      },
+      {
+        "command": "tieba.openPythonDownload",
+        "title": "下载 Python"
+      },
+      {
+        "command": "tieba.resetOnboardingAndReload",
+        "title": "重置首次引导并重载"
       }
     ],
     "keybindings": [
@@ -165,6 +205,11 @@
           "command": "tieba.refreshAll",
           "when": "view == tieba.forums || view == tieba.history",
           "group": "navigation@2"
+        },
+        {
+          "command": "tieba.continueReading",
+          "when": "view == tieba.history",
+          "group": "secondary@1"
         },
         {
           "command": "tieba.refreshLatest",
@@ -211,7 +256,27 @@
           "when": "true"
         },
         {
+          "command": "tieba.continueReading",
+          "when": "true"
+        },
+        {
           "command": "tieba.openDiagnostics",
+          "when": "true"
+        },
+        {
+          "command": "tieba.openOnboarding",
+          "when": "true"
+        },
+        {
+          "command": "tieba.installAiotieba",
+          "when": "true"
+        },
+        {
+          "command": "tieba.openPythonDownload",
+          "when": "true"
+        },
+        {
+          "command": "tieba.resetOnboardingAndReload",
           "when": "true"
         },
         {
@@ -289,6 +354,7 @@
     }
   },
   "scripts": {
+    "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./"
   },

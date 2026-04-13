@@ -1,0 +1,17 @@
+.git/**
+.github/**
+.vscode/**
+docs/**
+src/**
+client-dashboard/**
+README_mock.md
+tsconfig.json
+**/*.map
+aiotieba-master/.gitignore
+aiotieba-master/.github/**
+aiotieba-master/docs/**
+aiotieba-master/test/**
+aiotieba-master/tests/**
+aiotieba-master/benchmark/**
+aiotieba-master/CMakeLists.txt
+aiotieba-master/README*

@@ -8,9 +8,11 @@
     error: null,
     favorite: false,
     onlyLz: false,
+    lastFullPageBeforeOnlyLz: null,
     expandedComments: {},
     postComments: {},
     lightboxSrc: null,
+    showBackToTop: false,
     settings: {
       showImages: true,
       compactMode: false,
@@ -170,6 +172,7 @@
   function renderLoaded() {
     const detail = state.detail;
     const visiblePosts = getVisiblePosts();
+    const pageCount = state.onlyLz ? "1" : detail.pageCount || "";
 
     return `
       <section class="list-shell">
@@ -179,12 +182,44 @@
             : visiblePosts.map(renderPost).join("")}
         </div>
         <div class="footer-nav">
-          <button class="button" data-action="prev"${detail.page <= 1 ? " disabled" : ""}>上一页</button>
-          <div class="hint">只保留正文、图片和楼中楼</div>
-          <button class="button" data-action="next"${detail.pageCount && detail.page >= detail.pageCount ? " disabled" : ""}>下一页</button>
+          <button class="button" data-action="prev"${state.onlyLz || detail.page <= 1 ? " disabled" : ""}>上一页</button>
+          <div class="footer-tools">
+            <div class="hint">只保留正文、图片和楼中楼</div>
+            <div class="page-jump">
+              <span class="hint">跳到</span>
+              <input
+                class="page-jump-input"
+                data-role="pageJumpInput"
+                type="number"
+                min="1"
+                ${pageCount ? `max="${escapeHtml(pageCount)}"` : ""}
+                value="${escapeHtml(state.onlyLz ? 1 : detail.page || 1)}"
+                ${state.onlyLz ? "disabled" : ""}
+              />
+              <span class="hint">页</span>
+              <button class="button button-subtle" data-action="jumpPage"${state.onlyLz ? " disabled" : ""}>跳转</button>
+            </div>
+          </div>
+          <button class="button" data-action="next"${state.onlyLz || (detail.pageCount && detail.page >= detail.pageCount) ? " disabled" : ""}>下一页</button>
         </div>
       </section>
     `;
+  }
+
+  function renderHeaderMeta(detail, sourceThread, visiblePosts) {
+    const forumName = detail?.forumName || sourceThread?.forumName || "贴吧";
+    const heroAuthor = detail?.threadAuthorName || sourceThread?.authorName || "未知作者";
+    const replyCount = sourceThread?.replyCount || 0;
+
+    if (state.onlyLz) {
+      return `${escapeHtml(forumName)}吧 · 楼主 ${escapeHtml(heroAuthor)} · 回复 ${escapeHtml(replyCount)} · 第 1 页 / 1 · 当前页命中 ${escapeHtml(
+        visiblePosts.length
+      )} 层`;
+    }
+
+    return `${escapeHtml(forumName)}吧 · 楼主 ${escapeHtml(heroAuthor)} · 回复 ${escapeHtml(replyCount)} · 第 ${escapeHtml(
+      detail?.page || 1
+    )} 页${detail?.pageCount ? ` / ${escapeHtml(detail.pageCount)}` : ""}`;
   }
 
   function render() {
@@ -192,8 +227,7 @@
 
     const detail = state.detail;
     const sourceThread = detail?.thread || null;
-    const heroAuthor = detail?.threadAuthorName || sourceThread?.authorName || "未知作者";
-    const replyCount = sourceThread?.replyCount || 0;
+    const visiblePosts = getVisiblePosts();
 
     const content = state.loading
       ? '<section class="state">正在加载帖子内容…</section>'
@@ -208,8 +242,7 @@
             <div>
               <h1 class="page-title">${escapeHtml(detail?.title || "Tieba Reader")}</h1>
               <div class="page-meta">
-                ${escapeHtml(detail?.forumName || sourceThread?.forumName || "贴吧")}吧 · 楼主 ${escapeHtml(heroAuthor)} · 回复 ${escapeHtml(replyCount)} ·
-                第 ${escapeHtml(detail?.page || 1)} 页${detail?.pageCount ? ` / ${escapeHtml(detail.pageCount)}` : ""}
+                ${renderHeaderMeta(detail, sourceThread, visiblePosts)}
               </div>
             </div>
             <div class="toolbar">
@@ -221,6 +254,7 @@
           </div>
         </header>
         ${content}
+        ${state.showBackToTop ? '<button class="back-to-top" data-action="backToTop">回到顶部</button>' : ""}
         ${state.lightboxSrc
           ? `<div class="lightbox">
               <div class="lightbox-backdrop" data-action="closeLightbox"></div>
@@ -255,12 +289,77 @@
         if (action === "prev" && page > 1) {
           send("loadThreadPage", { page: page - 1 });
         }
-        if (action === "next") {
+        if (action === "next" && !state.onlyLz) {
           send("loadThreadPage", { page: page + 1 });
         }
+        if (action === "jumpPage") {
+          if (state.onlyLz) {
+            return;
+          }
+          const input = app.querySelector("[data-role='pageJumpInput']");
+          const raw = Number.parseInt(input?.value || "", 10);
+          if (!Number.isFinite(raw) || raw <= 0) {
+            return;
+          }
+
+          const maxPage = state.detail?.pageCount || raw;
+          const targetPage = Math.max(1, Math.min(raw, maxPage));
+          if (targetPage === page) {
+            return;
+          }
+
+          send("loadThreadPage", { page: targetPage });
+        }
         if (action === "onlyLz") {
-          state.onlyLz = !state.onlyLz;
+          const currentPage = state.detail?.page || 1;
+          if (!state.onlyLz) {
+            state = {
+              ...state,
+              onlyLz: true,
+              lastFullPageBeforeOnlyLz: currentPage > 1 ? currentPage : null
+            };
+
+            if (currentPage > 1) {
+              state = {
+                ...state,
+                loading: true,
+                error: null
+              };
+              render();
+              send("loadThreadPage", { page: 1 });
+              return;
+            }
+
+            render();
+            return;
+          }
+
+          const restorePage = state.lastFullPageBeforeOnlyLz;
+          state = {
+            ...state,
+            onlyLz: false,
+            lastFullPageBeforeOnlyLz: null
+          };
+
+          if (restorePage && restorePage > 1 && currentPage === 1) {
+            state = {
+              ...state,
+              loading: true,
+              error: null
+            };
+            render();
+            send("loadThreadPage", { page: restorePage });
+            return;
+          }
+
           render();
+          return;
+        }
+        if (action === "backToTop") {
+          window.scrollTo({
+            top: 0,
+            behavior: "smooth"
+          });
         }
         if (action === "closeLightbox") {
           state.lightboxSrc = null;
@@ -323,6 +422,32 @@
         send("loadPostComments", { postId, page });
       });
     });
+
+    const jumpInput = app.querySelector("[data-role='pageJumpInput']");
+    if (jumpInput) {
+      jumpInput.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") {
+          return;
+        }
+
+        event.preventDefault();
+        const jumpButton = app.querySelector("[data-action='jumpPage']");
+        jumpButton?.click();
+      });
+    }
+  }
+
+  function updateBackToTopVisibility() {
+    const nextValue = window.scrollY > 360;
+    if (state.showBackToTop === nextValue) {
+      return;
+    }
+
+    state = {
+      ...state,
+      showBackToTop: nextValue
+    };
+    render();
   }
 
   window.addEventListener("message", (event) => {
@@ -348,12 +473,15 @@
         error: null,
         detail: payload,
         favorite: payload.favorite,
+        lastFullPageBeforeOnlyLz: state.onlyLz ? state.lastFullPageBeforeOnlyLz : null,
         expandedComments: {},
         postComments: {},
         lightboxSrc: null,
+        showBackToTop: false,
         settings: nextSettings
       };
       render();
+      window.scrollTo(0, 0);
       return;
     }
     if (type === "threadError") {
@@ -372,6 +500,7 @@
         error: payload,
         detail: null,
         lightboxSrc: null,
+        showBackToTop: false,
         settings: nextSettings
       };
       render();
@@ -457,6 +586,7 @@
       render();
     }
   });
+  window.addEventListener("scroll", updateBackToTopVisibility, { passive: true });
 
   render();
   send("ready");

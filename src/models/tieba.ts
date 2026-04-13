@@ -98,6 +98,12 @@ export interface HistoryEntry {
   lastOpenedAt: number;
 }
 
+export interface ReadingSession {
+  thread: ThreadSummary;
+  page: number;
+  updatedAt: number;
+}
+
 export interface TiebaSettings {
   showImages: boolean;
   compactMode: boolean;

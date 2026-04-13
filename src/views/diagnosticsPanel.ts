@@ -27,7 +27,8 @@ export class DiagnosticsPanel {
       "Tieba 环境诊断",
       vscode.ViewColumn.Active,
       {
-        enableScripts: false
+        enableScripts: false,
+        enableCommandUris: true
       }
     );
 
@@ -122,12 +123,20 @@ export class DiagnosticsPanel {
     <h2>Bridge 状态</h2>
     <div class="grid">
       ${this.renderCard("aiotieba bridge", report.bridge.available ? "可用" : "不可用")}
-      ${this.renderCard("Python 命令", this.escapeHtml(report.bridge.pythonPath))}
+      ${this.renderCard("Python 命令", report.bridge.pythonPath)}
+      ${this.renderCard("Python 运行时", report.bridge.pythonAvailable ? `可用${report.bridge.pythonVersion ? ` · ${report.bridge.pythonVersion}` : ""}` : "不可用")}
       ${this.renderCard("导入方式", report.bridge.loadMode === "local" ? "项目内 aiotieba-master" : report.bridge.loadMode === "installed" ? "已安装 Python 包" : "未知")}
-      ${this.renderCard("aiotieba 版本", this.escapeHtml(report.bridge.version || "未知"))}
+      ${this.renderCard("aiotieba 版本", report.bridge.version || "未知")}
     </div>
     <p>${this.escapeHtml(report.bridge.message)}</p>
     ${report.bridge.modulePath ? `<p class="subtle"><code>${this.escapeHtml(report.bridge.modulePath)}</code></p>` : ""}
+    ${
+      !report.bridge.pythonAvailable
+        ? `<p><a href="${this.commandUri("tieba.openPythonDownload")}">下载 Python</a></p>`
+        : report.bridge.canInstallAiotieba
+          ? `<p><a href="${this.commandUri("tieba.installAiotieba")}">一键安装 aiotieba</a></p>`
+        : ""
+    }
 
     <h2>当前设置</h2>
     <ul>
@@ -166,7 +175,13 @@ export class DiagnosticsPanel {
     const items: string[] = [];
 
     if (!report.bridge.available) {
-      items.push("先安装可用 Python，并执行 `python -m pip install aiotieba`。");
+      if (report.bridge.pythonAvailable) {
+        items.push("当前已经有可用 Python，可以直接点“一键安装 aiotieba”。");
+      } else {
+        items.push("先点“下载 Python”，安装时勾选 Add python.exe to PATH。");
+        items.push("装好后重新打开环境诊断，确认 Python 运行时变成“可用”。");
+        items.push("确认有 Python 后，再执行“安装 aiotieba”。");
+      }
     }
     if (!report.hasBduss) {
       items.push("在命令面板执行 `导入贴吧登录态`。");
@@ -188,5 +203,9 @@ export class DiagnosticsPanel {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  private commandUri(command: string): string {
+    return vscode.Uri.parse(`command:${command}`).toString();
   }
 }

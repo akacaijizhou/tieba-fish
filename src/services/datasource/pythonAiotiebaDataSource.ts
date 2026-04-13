@@ -67,6 +67,12 @@ export interface BridgeHealthCheckResult {
   loadMode?: "installed" | "local";
 }
 
+export interface PythonRuntimeCheckResult {
+  available: boolean;
+  version?: string;
+  executable?: string;
+}
+
 export interface BridgeSelfFollowForum {
   forumId?: string;
   forumName: string;
@@ -132,6 +138,72 @@ export class PythonAiotiebaDataSource implements TiebaDataSource {
       auth: await this.getBridgeAuth(),
       payload: {}
     });
+  }
+
+  async checkPythonRuntime(): Promise<PythonRuntimeCheckResult> {
+    const attempts = buildPythonAttempts(this.getPythonPath());
+    let lastProcessError: NodeJS.ErrnoException | undefined;
+
+    for (const attempt of attempts) {
+      try {
+        const stdout = await runSimplePythonAttempt(
+          attempt.command,
+          [...attempt.argsPrefix, "-c", "import sys; print(sys.version.split()[0])"],
+          10_000
+        );
+        return {
+          available: true,
+          version: stdout.trim() || undefined,
+          executable: attempt.command
+        };
+      } catch (error) {
+        if (isCommandNotFoundError(error)) {
+          lastProcessError = error;
+          continue;
+        }
+
+        throw new TiebaError("bridge", "Python 可执行文件存在，但探测运行时失败。", error);
+      }
+    }
+
+    const target = this.getPythonPath() || "python";
+    throw new TiebaError(
+      "bridge",
+      `没有找到可用的 Python 解释器：${target}。请先安装 Python，或把 tieba.pythonPath 改成正确的命令。`,
+      lastProcessError
+    );
+  }
+
+  async installAiotiebaPackage(): Promise<void> {
+    const attempts = buildPythonAttempts(this.getPythonPath());
+    let lastProcessError: NodeJS.ErrnoException | undefined;
+
+    for (const attempt of attempts) {
+      try {
+        await runSimplePythonAttempt(
+          attempt.command,
+          [...attempt.argsPrefix, "-m", "pip", "install", "aiotieba", "--disable-pip-version-check"],
+          240_000
+        );
+        return;
+      } catch (error) {
+        if (isCommandNotFoundError(error)) {
+          lastProcessError = error;
+          continue;
+        }
+
+        throw error instanceof TiebaError
+          ? error
+          : new TiebaError("bridge", "安装 aiotieba 失败。", error);
+      }
+    }
+
+    const target = this.getPythonPath() || "python";
+    throw new TiebaError(
+      "bridge",
+      `没有找到可用的 Python 解释器：${target}。请先安装 Python，或把 tieba.pythonPath 改成正确的命令。`,
+      lastProcessError
+    );
   }
 
   async getSelfFollowForumsAll(pageSize = 200): Promise<BridgeSelfFollowForum[]> {
@@ -259,6 +331,55 @@ function runSingleBridgeAttempt<T>(
     });
 
     child.stdin.end(JSON.stringify(request));
+  });
+}
+
+function runSimplePythonAttempt(command: string, args: string[], timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = cp.spawn(command, args, {
+      cwd: path.dirname(path.dirname(path.dirname(__dirname))),
+      windowsHide: true
+    });
+
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new TiebaError("bridge", "Python 命令执行超时。"));
+    }, timeoutMs);
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+
+      if (code === 0) {
+        resolve(stdout);
+        return;
+      }
+
+      reject(
+        new TiebaError(
+          "bridge",
+          stderr.trim() || stdout.trim() || `Python 命令执行失败，exit code=${code ?? "unknown"}。`
+        )
+      );
+    });
   });
 }
 

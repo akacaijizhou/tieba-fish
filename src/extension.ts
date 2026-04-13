@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { ForumSubscription, OpenTarget, ThreadSummary } from "./models/tieba";
 import { TiebaError } from "./services/errors";
 import { ForumNameSuggestion, TiebaService, TiebaStatusSnapshot } from "./services/tiebaService";
+import { STORAGE_KEYS } from "./storage/storageKeys";
 import { BossFilesProvider } from "./views/bossFilesProvider";
 import { BossModeManager } from "./views/bossModeManager";
 import { DiagnosticsPanel } from "./views/diagnosticsPanel";
@@ -9,6 +10,7 @@ import { FollowedForumsProvider } from "./views/followedForumsProvider";
 import { ForumPanelManager } from "./views/forumPanel";
 import { HistoryViewProvider } from "./views/historyViewProvider";
 import { LatestViewProvider } from "./views/latestViewProvider";
+import { OnboardingPanel } from "./views/onboardingPanel";
 import { ThreadPanelManager } from "./views/threadPanel";
 
 interface LoadableTreeProvider {
@@ -31,11 +33,18 @@ export function activate(context: vscode.ExtensionContext): void {
   const bossFilesProvider = new BossFilesProvider(vscode.Uri.joinPath(workspaceRoot, "client-dashboard"));
   const bossMode = new BossModeManager(context, forumPanels, threadPanels);
   const diagnosticsPanel = new DiagnosticsPanel(context, service);
+  const onboardingPanel = new OnboardingPanel(context, service);
   const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10);
+  const resetOnboardingStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 9);
   statusBarItem.command = "tieba.openDiagnostics";
   statusBarItem.name = "Tieba 状态";
   statusBarItem.show();
-  context.subscriptions.push(statusBarItem);
+  resetOnboardingStatusBarItem.command = "tieba.resetOnboardingAndReload";
+  resetOnboardingStatusBarItem.name = "Tieba 重置引导";
+  resetOnboardingStatusBarItem.text = "$(debug-restart) 重置引导";
+  resetOnboardingStatusBarItem.tooltip = "清空本地登录态、缓存和引导状态，并重载当前窗口";
+  resetOnboardingStatusBarItem.show();
+  context.subscriptions.push(statusBarItem, resetOnboardingStatusBarItem);
 
   void vscode.commands.executeCommand("setContext", "tieba.bossModeEnabled", false);
 
@@ -43,6 +52,12 @@ export function activate(context: vscode.ExtensionContext): void {
     const snapshot = await service.getStatusSnapshot();
     statusBarItem.text = buildTiebaStatusBarText(snapshot);
     statusBarItem.tooltip = buildTiebaStatusBarTooltip(snapshot);
+  };
+
+  const openOnboarding = async (preserveFocus = false): Promise<void> => {
+    await context.globalState.update(STORAGE_KEYS.onboardingSeen, true);
+    await context.globalState.update(STORAGE_KEYS.onboardingForceNextOpen, false);
+    await onboardingPanel.open({ preserveFocus });
   };
 
   void refreshStatusBar();
@@ -67,6 +82,37 @@ export function activate(context: vscode.ExtensionContext): void {
     bossFilesView,
   );
 
+  let onboardingAutoOpenHandled = false;
+  const maybeAutoOpenOnboarding = async (): Promise<void> => {
+    if (onboardingAutoOpenHandled) {
+      return;
+    }
+
+    if (!followedForumsView.visible && !latestView.visible && !historyView.visible) {
+      return;
+    }
+
+    onboardingAutoOpenHandled = true;
+    const alreadySeen = context.globalState.get<boolean>(STORAGE_KEYS.onboardingSeen, false);
+    const forceNextOpen = context.globalState.get<boolean>(STORAGE_KEYS.onboardingForceNextOpen, false);
+    if (forceNextOpen) {
+      await openOnboarding(false);
+      return;
+    }
+
+    if (alreadySeen) {
+      return;
+    }
+
+    const diagnostics = await service.getDiagnosticsReport();
+    if (!shouldAutoOpenOnboarding(service, diagnostics)) {
+      await context.globalState.update(STORAGE_KEYS.onboardingSeen, true);
+      return;
+    }
+
+    await openOnboarding(false);
+  };
+
   const followedForumsLoading = createTreeViewLoadingController(
     followedForumsView,
     followedForumsProvider,
@@ -76,6 +122,19 @@ export function activate(context: vscode.ExtensionContext): void {
   const historyViewLoading = createTreeViewLoadingController(historyView, historyViewProvider, "正在加载历史...");
 
   context.subscriptions.push(followedForumsLoading, latestViewLoading, historyViewLoading);
+  context.subscriptions.push(
+    followedForumsView.onDidChangeVisibility(() => {
+      void maybeAutoOpenOnboarding();
+    }),
+    latestView.onDidChangeVisibility(() => {
+      void maybeAutoOpenOnboarding();
+    }),
+    historyView.onDidChangeVisibility(() => {
+      void maybeAutoOpenOnboarding();
+    })
+  );
+
+  void maybeAutoOpenOnboarding();
 
   context.subscriptions.push(
     service.onDidChange(() => {
@@ -356,8 +415,69 @@ export function activate(context: vscode.ExtensionContext): void {
       await openThreadFromInput(threadPanels);
     }),
 
+    vscode.commands.registerCommand("tieba.continueReading", async () => {
+      const session = service.getReadingSession();
+      if (!session) {
+        void vscode.window.showInformationMessage("还没有可继续的阅读记录。先打开一个帖子看看。");
+        return;
+      }
+
+      await threadPanels.open(session.thread, {
+        page: session.page
+      });
+    }),
+
     vscode.commands.registerCommand("tieba.openDiagnostics", async () => {
       await diagnosticsPanel.open();
+    }),
+
+    vscode.commands.registerCommand("tieba.openOnboarding", async () => {
+      await openOnboarding(false);
+    }),
+
+    vscode.commands.registerCommand("tieba.installAiotieba", async () => {
+      try {
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: "正在安装 aiotieba",
+            cancellable: false
+          },
+          async () => {
+            await service.installAiotiebaPackage();
+          }
+        );
+
+        void vscode.window.showInformationMessage("aiotieba 安装完成。现在会优先走结构化数据主路径。");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "安装 aiotieba 失败。";
+        const action = await vscode.window.showErrorMessage(message, "打开环境诊断");
+        if (action === "打开环境诊断") {
+          await vscode.commands.executeCommand("tieba.openDiagnostics");
+        }
+      }
+    }),
+
+    vscode.commands.registerCommand("tieba.openPythonDownload", async () => {
+      await vscode.env.openExternal(vscode.Uri.parse("https://www.python.org/downloads/windows/"));
+    }),
+
+    vscode.commands.registerCommand("tieba.resetOnboardingAndReload", async () => {
+      const confirm = await vscode.window.showWarningMessage(
+        "重置引导并清空本地 Tieba 数据？这会删除 BDUSS、STOKEN、Cookie、关注吧、收藏、历史和缓存，然后重载当前窗口。",
+        { modal: true },
+        "清空并重载"
+      );
+
+      if (confirm !== "清空并重载") {
+        return;
+      }
+
+      onboardingAutoOpenHandled = false;
+      await service.resetAllLocalState();
+      await context.globalState.update(STORAGE_KEYS.onboardingSeen, false);
+      await context.globalState.update(STORAGE_KEYS.onboardingForceNextOpen, true);
+      await vscode.commands.executeCommand("workbench.action.reloadWindow");
     }),
 
     vscode.commands.registerCommand("tieba.openExternal", async (target?: OpenTarget) => {
@@ -654,6 +774,18 @@ function buildTiebaStatusBarTooltip(snapshot: TiebaStatusSnapshot): vscode.Markd
   }
   markdown.appendMarkdown("\n点击打开环境诊断。");
   return markdown;
+}
+
+function shouldAutoOpenOnboarding(service: TiebaService, diagnostics: Awaited<ReturnType<TiebaService["getDiagnosticsReport"]>>): boolean {
+  if (!diagnostics.bridge.available) {
+    return true;
+  }
+
+  if (!diagnostics.hasBduss || !diagnostics.hasStoken) {
+    return true;
+  }
+
+  return service.listForums().length === 0 && service.listHistory().length === 0;
 }
 
 async function openThreadFromInput(threadPanels: ThreadPanelManager): Promise<void> {

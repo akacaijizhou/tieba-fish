@@ -210,15 +210,22 @@ export class ThreadPanelManager {
         },
         forceRefresh
       );
+      const updatedThread: ThreadSummary = {
+        ...state.thread,
+        title: detail.title || state.thread.title,
+        forumName: detail.forumName || state.thread.forumName,
+        pageCount: detail.pageCount ?? state.thread.pageCount
+      };
       this.sessions.set(state.thread.threadId, {
-        thread: state.thread,
+        thread: updatedThread,
         page: detail.page
       });
+      await this.service.recordReadingSession(updatedThread, detail.page);
       panel.webview.postMessage({
         type: "threadLoaded",
         payload: {
           ...detail,
-          thread: state.thread,
+          thread: updatedThread,
           favorite: this.service.isFavorite(state.thread.threadId),
           settings: this.service.getSettings()
         }

@@ -6,6 +6,7 @@ import {
   HistoryEntry,
   LatestThreadsSnapshot,
   PostCommentsPage,
+  ReadingSession,
   ThreadDetailPage,
   ThreadSummary,
   TiebaSettings
@@ -15,12 +16,13 @@ import { FavoritesStore } from "../storage/favoritesStore";
 import { ForumsStore, SyncForumsResult } from "../storage/forumsStore";
 import { HistoryStore } from "../storage/historyStore";
 import { LatestThreadsStore } from "../storage/latestThreadsStore";
+import { ReadingSessionStore } from "../storage/readingSessionStore";
 import { SettingsStore } from "../storage/settingsStore";
 import { STORAGE_KEYS } from "../storage/storageKeys";
 import { AuthStore } from "../storage/authStore";
 import { TiebaError } from "./errors";
 import { LiveTiebaDataSource, buildForumUrl, buildThreadUrl } from "./datasource/liveTiebaDataSource";
-import { PythonAiotiebaDataSource } from "./datasource/pythonAiotiebaDataSource";
+import { PythonAiotiebaDataSource, PythonRuntimeCheckResult } from "./datasource/pythonAiotiebaDataSource";
 import { TiebaDataSource } from "./datasource/tiebaDataSource";
 
 const CACHE_VERSION = 1;
@@ -53,6 +55,9 @@ export interface TiebaDiagnosticsReport extends TiebaStatusSnapshot {
     version?: string;
     modulePath?: string;
     loadMode?: "installed" | "local";
+    pythonAvailable: boolean;
+    pythonVersion?: string;
+    canInstallAiotieba: boolean;
     pythonPath: string;
     message: string;
   };
@@ -66,6 +71,7 @@ export class TiebaService {
   private readonly favoritesStore: FavoritesStore;
   private readonly historyStore: HistoryStore;
   private readonly latestThreadsStore: LatestThreadsStore;
+  private readonly readingSessionStore: ReadingSessionStore;
   private readonly settingsStore: SettingsStore;
   private readonly authStore: AuthStore;
   private readonly forumCache: CacheStore<ForumThreadPage>;
@@ -86,6 +92,7 @@ export class TiebaService {
     this.favoritesStore = new FavoritesStore(context);
     this.historyStore = new HistoryStore(context);
     this.latestThreadsStore = new LatestThreadsStore(context);
+    this.readingSessionStore = new ReadingSessionStore(context);
     this.settingsStore = new SettingsStore();
     this.authStore = new AuthStore(context);
     this.forumCache = new CacheStore(context, STORAGE_KEYS.forumCache, CACHE_VERSION);
@@ -114,6 +121,10 @@ export class TiebaService {
     return this.historyStore.list();
   }
 
+  getReadingSession(): ReadingSession | undefined {
+    return this.readingSessionStore.get();
+  }
+
   listForumSuggestions(query = ""): ForumNameSuggestion[] {
     return this.collectLocalForumSuggestions(query.trim());
   }
@@ -135,20 +146,29 @@ export class TiebaService {
   }
 
   async getDiagnosticsReport(): Promise<TiebaDiagnosticsReport> {
-    const [status, bridge, pythonPath] = await Promise.all([
+    const [status, bridge, pythonPath, pythonRuntime] = await Promise.all([
       this.getStatusSnapshot(),
       this.getBridgeHealthCheck(),
-      Promise.resolve(vscode.workspace.getConfiguration("tieba").get<string>("pythonPath")?.trim() || "python")
+      Promise.resolve(vscode.workspace.getConfiguration("tieba").get<string>("pythonPath")?.trim() || "python"),
+      this.getPythonRuntimeCheck()
     ]);
 
     return {
       ...status,
       bridge: {
         ...bridge,
-        pythonPath
+        pythonPath,
+        pythonAvailable: pythonRuntime.available,
+        pythonVersion: pythonRuntime.version,
+        canInstallAiotieba: pythonRuntime.available && !bridge.available
       },
       settings: this.getSettings()
     };
+  }
+
+  async installAiotiebaPackage(): Promise<void> {
+    await this.bridgeDataSource.installAiotiebaPackage();
+    this.statusEmitter.fire();
   }
 
   async toggleImages(): Promise<TiebaSettings> {
@@ -213,8 +233,32 @@ export class TiebaService {
     this.changeEmitter.fire();
   }
 
+  async recordReadingSession(thread: ThreadSummary, page: number): Promise<void> {
+    await this.readingSessionStore.set(thread, page);
+    this.changeEmitter.fire();
+  }
+
   async clearCaches(): Promise<void> {
     await Promise.all([this.forumCache.clear(), this.threadCache.clear()]);
+  }
+
+  async resetAllLocalState(): Promise<void> {
+    await Promise.all([
+      this.authStore.clearAccountAuth(),
+      this.authStore.clearCookie(),
+      this.forumsStore.clear(),
+      this.favoritesStore.clear(),
+      this.historyStore.clear(),
+      this.latestThreadsStore.clear(),
+      this.readingSessionStore.clear(),
+      this.clearCaches()
+    ]);
+
+    this.lastResolvedSource = undefined;
+    this.lastResolvedAt = undefined;
+    this.lastFailure = undefined;
+    this.changeEmitter.fire();
+    this.statusEmitter.fire();
   }
 
   async setLatestThreads(pageData: ForumThreadPage): Promise<LatestThreadsSnapshot> {
@@ -487,6 +531,8 @@ export class TiebaService {
         version: result.version,
         modulePath: result.modulePath,
         loadMode: result.loadMode,
+        pythonAvailable: true,
+        canInstallAiotieba: false,
         message:
           result.loadMode === "local"
             ? "aiotieba bridge 可用，当前通过项目内 aiotieba-master 回退导入。"
@@ -496,7 +542,19 @@ export class TiebaService {
       const normalized = normalizeTiebaError(error);
       return {
         available: false,
+        pythonAvailable: false,
+        canInstallAiotieba: false,
         message: normalized.message
+      };
+    }
+  }
+
+  private async getPythonRuntimeCheck(): Promise<PythonRuntimeCheckResult> {
+    try {
+      return await this.bridgeDataSource.checkPythonRuntime();
+    } catch {
+      return {
+        available: false
       };
     }
   }

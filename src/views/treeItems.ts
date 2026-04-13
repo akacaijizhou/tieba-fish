@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { ForumSubscription, ThreadSummary } from "../models/tieba";
+import { ForumSubscription, ReadingSession, ThreadSummary } from "../models/tieba";
 
 export class ForumTreeItem extends vscode.TreeItem {
   constructor(
@@ -84,6 +84,22 @@ export class ActionTreeItem extends vscode.TreeItem {
       command: commandId,
       title: label,
       arguments: args
+    };
+  }
+}
+
+export class ContinueReadingTreeItem extends vscode.TreeItem {
+  constructor(readonly session: ReadingSession) {
+    super("继续阅读", vscode.TreeItemCollapsibleState.None);
+    this.description = `${session.thread.forumName}吧 · 第 ${session.page} 页`;
+    this.tooltip = new vscode.MarkdownString(
+      `**继续阅读**\n\n${session.thread.title}\n\n${session.thread.forumName}吧 · 第 ${session.page} 页`
+    );
+    this.contextValue = "tieba.continueReading";
+    this.iconPath = new vscode.ThemeIcon("history");
+    this.command = {
+      command: "tieba.continueReading",
+      title: "继续阅读"
     };
   }
 }

@@ -45,6 +45,10 @@ export class ForumsStore {
     await this.context.globalState.update(STORAGE_KEYS.forums, next);
   }
 
+  async clear(): Promise<void> {
+    await this.context.globalState.update(STORAGE_KEYS.forums, []);
+  }
+
   async mergeFromAccount(inputs: SyncForumInput[]): Promise<SyncForumsResult> {
     const forums = this.list();
     const next = [...forums];

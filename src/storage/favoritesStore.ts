@@ -30,4 +30,8 @@ export class FavoritesStore {
     await this.context.globalState.update(STORAGE_KEYS.favorites, next);
     return !exists;
   }
+
+  async clear(): Promise<void> {
+    await this.context.globalState.update(STORAGE_KEYS.favorites, []);
+  }
 }

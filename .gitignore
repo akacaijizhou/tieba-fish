@@ -2,6 +2,7 @@ node_modules
 out
 *.vsix
 .DS_Store
+README_mock.md
 __pycache__/
 *.pyc
 .pytest_cache/

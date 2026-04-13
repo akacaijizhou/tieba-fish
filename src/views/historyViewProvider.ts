@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { TiebaService } from "../services/tiebaService";
-import { EmptyTreeItem, LoadingTreeItem, ThreadTreeItem } from "./treeItems";
+import { ContinueReadingTreeItem, EmptyTreeItem, LoadingTreeItem, ThreadTreeItem } from "./treeItems";
 
 export class HistoryViewProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private readonly changeEmitter = new vscode.EventEmitter<void>();
@@ -32,11 +32,20 @@ export class HistoryViewProvider implements vscode.TreeDataProvider<vscode.TreeI
       return [new LoadingTreeItem("正在加载历史...")];
     }
 
+    const readingSession = this.service.getReadingSession();
     const history = this.service.listHistory();
-    if (history.length === 0) {
-      return [new EmptyTreeItem("最近还没有浏览记录")];
+    const items: vscode.TreeItem[] = [];
+
+    if (readingSession) {
+      items.push(new ContinueReadingTreeItem(readingSession));
     }
 
-    return history.map((entry) => new ThreadTreeItem(entry.thread));
+    if (history.length === 0) {
+      items.push(new EmptyTreeItem("最近还没有浏览记录"));
+      return items;
+    }
+
+    items.push(...history.map((entry) => new ThreadTreeItem(entry.thread)));
+    return items;
   }
 }

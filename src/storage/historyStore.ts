@@ -22,4 +22,8 @@ export class HistoryStore {
 
     await this.context.globalState.update(STORAGE_KEYS.history, next);
   }
+
+  async clear(): Promise<void> {
+    await this.context.globalState.update(STORAGE_KEYS.history, []);
+  }
 }
