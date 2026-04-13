@@ -1,0 +1,35 @@
+name: CI-beta
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-beta:
+    name: Test-beta
+    runs-on: ubuntu-latest
+
+    environment: develop
+
+    env:
+      PYTHON_VERSION: "3.14"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: develop
+
+      - name: Setup UV
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: |
+          uv python pin ${{ env.PYTHON_VERSION }}
+          uv sync
+
+      - name: Run tests
+        env:
+          TB_BDUSS: ${{ secrets.BDUSS }}
+          TB_STOKEN: ${{ secrets.STOKEN }}
+        run: |
+          uv run pytest

@@ -1,0 +1,5 @@
+[data-md-color-scheme=slate] {
+  --md-hue: 210;
+  --md-default-bg-color: hsla(var(--md-hue), 15%, 10%, 1);
+  --md-typeset-a-color: hsla(var(--md-hue), 75%, 50%, 1);
+}

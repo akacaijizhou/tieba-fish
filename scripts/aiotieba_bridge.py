@@ -1,0 +1,467 @@
+from __future__ import annotations
+
+import asyncio
+import html
+import json
+import logging
+import math
+import pathlib
+import sys
+from dataclasses import is_dataclass
+from datetime import datetime
+from typing import Any
+from urllib.parse import quote
+
+logging.basicConfig(level=logging.CRITICAL)
+logging.disable(logging.CRITICAL)
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+LOCAL_AIOTIEBA_PATH = ROOT / "aiotieba-master"
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
+
+def emit(payload: dict[str, Any]) -> None:
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False))
+
+
+def fail(code: str, message: str, details: str | None = None) -> None:
+    emit(
+        {
+            "ok": False,
+            "error": {
+                "code": code,
+                "message": message,
+                "details": details,
+            },
+        }
+    )
+
+
+def load_request() -> dict[str, Any]:
+    raw = sys.stdin.read().strip()
+    if not raw:
+        raise ValueError("bridge stdin is empty")
+    return json.loads(raw)
+
+
+def build_forum_url(forum_name: str, page: int) -> str:
+    pn = max(0, page - 1) * 50
+    return f"https://tieba.baidu.com/f?kw={quote(forum_name)}&pn={pn}"
+
+
+def build_thread_url(thread_id: str | int, page: int) -> str:
+    return f"https://tieba.baidu.com/p/{quote(str(thread_id))}?pn={page}"
+
+
+def ensure_aiotieba_import() -> Any:
+    try:
+        import aiotieba as tb  # type: ignore
+        silence_aiotieba_logger(tb)
+        return tb
+    except ModuleNotFoundError:
+        pass
+    except Exception as error:  # pragma: no cover
+        raise RuntimeError(f"导入 aiotieba 失败：{error}") from error
+
+    if str(LOCAL_AIOTIEBA_PATH) not in sys.path:
+        sys.path.insert(0, str(LOCAL_AIOTIEBA_PATH))
+
+    try:
+        import aiotieba as tb  # type: ignore
+        silence_aiotieba_logger(tb)
+    except ModuleNotFoundError as error:
+        missing = error.name or "unknown dependency"
+        raise RuntimeError(
+            "无法导入 aiotieba。请先执行 `python -m pip install aiotieba`；"
+            "如果你要直接跑本地源码，再装好 C/C++ 构建链后执行 "
+            "`python -m pip install -e .\\aiotieba-master`。"
+            f"当前缺少依赖：{missing}。"
+        ) from error
+    except Exception as error:  # pragma: no cover
+        raise RuntimeError(f"导入 aiotieba 失败：{error}") from error
+
+    return tb
+
+
+def silence_aiotieba_logger(tb: Any) -> None:
+    try:
+        logger = logging.getLogger("tieba-bridge")
+        logger.handlers.clear()
+        logger.addHandler(logging.NullHandler())
+        logger.propagate = False
+        tb.logging.set_logger(logger)
+    except Exception:
+        pass
+
+
+def normalize_title(title: str, fallback_text: str, thread_id: int | str) -> str:
+    cleaned = (title or "").strip()
+    if cleaned:
+        return cleaned
+
+    for line in fallback_text.splitlines():
+        line = line.strip()
+        if line:
+            return line[:80]
+
+    return f"帖子 {thread_id}"
+
+
+def summarize(text: str, limit: int = 120) -> str:
+    cleaned = " ".join((text or "").split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return f"{cleaned[: limit - 1]}…"
+
+
+def format_time_label(timestamp: int) -> str | None:
+    if not timestamp:
+        return None
+    return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
+
+
+def escape_text(value: str) -> str:
+    return html.escape(value, quote=True).replace("\n", "<br/>")
+
+
+def safe_url(value: Any) -> str:
+    return html.escape(normalize_remote_url(value), quote=True)
+
+
+def normalize_remote_url(value: Any) -> str:
+    text = str(value)
+    if text.startswith("http://"):
+        return "https://" + text[len("http://") :]
+    return text
+
+
+def flush_inline_buffer(blocks: list[str], inline_parts: list[str]) -> None:
+    if not inline_parts:
+        return
+    blocks.append(f"<p>{''.join(inline_parts)}</p>")
+    inline_parts.clear()
+
+
+def render_contents(contents: Any, sign: str = "") -> dict[str, Any]:
+    blocks: list[str] = []
+    inline_parts: list[str] = []
+    image_urls: list[str] = []
+
+    for fragment in getattr(contents, "objs", []) or []:
+        class_name = fragment.__class__.__name__.lower()
+
+        if hasattr(fragment, "raw_url") and hasattr(fragment, "title"):
+            url = safe_url(getattr(fragment, "url", getattr(fragment, "raw_url", "")))
+            title = escape_text(getattr(fragment, "title", "") or getattr(fragment, "text", "") or url)
+            inline_parts.append(f'<a href="{url}">{title}</a>')
+            continue
+
+        if hasattr(fragment, "user_id") and hasattr(fragment, "text"):
+            inline_parts.append(f"<span>{escape_text(fragment.text)}</span>")
+            continue
+
+        if hasattr(fragment, "desc") and hasattr(fragment, "id"):
+            inline_parts.append(f"<span>{escape_text(fragment.desc or '[表情]')}</span>")
+            continue
+
+        if hasattr(fragment, "text") and hasattr(fragment, "url") and not hasattr(fragment, "raw_url"):
+            url = safe_url(fragment.url)
+            inline_parts.append(f'<a href="{url}">{escape_text(fragment.text or url)}</a>')
+            continue
+
+        if hasattr(fragment, "origin_src") and hasattr(fragment, "src"):
+            flush_inline_buffer(blocks, inline_parts)
+            image_url = getattr(fragment, "origin_src", "") or getattr(fragment, "big_src", "") or getattr(fragment, "src", "")
+            if image_url:
+                image_urls.append(normalize_remote_url(image_url))
+                blocks.append(f'<img src="{safe_url(image_url)}" alt="Tieba image" loading="lazy" />')
+            continue
+
+        if "video" in class_name and hasattr(fragment, "src"):
+            flush_inline_buffer(blocks, inline_parts)
+            label = f"[视频] {getattr(fragment, 'duration', 0)}s"
+            blocks.append(f'<p><a href="{safe_url(fragment.src)}">{escape_text(label)}</a></p>')
+            cover_src = getattr(fragment, "cover_src", "")
+            if cover_src:
+                blocks.append(f'<img src="{safe_url(cover_src)}" alt="Tieba video cover" loading="lazy" />')
+            continue
+
+        if "voice" in class_name and hasattr(fragment, "duration"):
+            flush_inline_buffer(blocks, inline_parts)
+            duration = int(getattr(fragment, "duration", 0) or 0)
+            blocks.append(f'<p class="subtle">[语音] {escape_text(str(duration))} 秒</p>')
+            continue
+
+        if hasattr(fragment, "text"):
+            inline_parts.append(escape_text(getattr(fragment, "text", "")))
+            continue
+
+        if is_dataclass(fragment):
+            inline_parts.append(escape_text(str(fragment)))
+
+    flush_inline_buffer(blocks, inline_parts)
+
+    if sign.strip():
+        blocks.append(f'<p class="subtle">{escape_text(sign.strip())}</p>')
+
+    if not blocks:
+        blocks.append('<p class="subtle">[内容为空]</p>')
+
+    return {
+        "html": "".join(blocks),
+        "text": getattr(contents, "text", "") or "",
+        "imageUrls": image_urls,
+    }
+
+
+def author_name(user: Any, fallback_author_id: int | None = None) -> str:
+    if user:
+        value = getattr(user, "show_name", "") or getattr(user, "user_name", "") or getattr(user, "nick_name", "")
+        if value:
+            return str(value)
+        user_id = getattr(user, "user_id", 0)
+        if user_id:
+            return str(user_id)
+    if fallback_author_id:
+        return str(fallback_author_id)
+    return "未知用户"
+
+
+def author_id_value(user: Any, fallback_author_id: int | None = None) -> str | None:
+    user_id = getattr(user, "user_id", 0) if user else 0
+    if user_id:
+        return str(user_id)
+    if fallback_author_id:
+        return str(fallback_author_id)
+    return None
+
+
+def map_thread_summary(thread: Any, forum_name: str) -> dict[str, Any]:
+    content_text = getattr(getattr(thread, "contents", None), "text", "") or ""
+    thread_id = getattr(thread, "tid")
+    last_time = getattr(thread, "last_time", 0)
+
+    return {
+        "threadId": str(thread_id),
+        "forumName": forum_name,
+        "title": normalize_title(getattr(thread, "title", ""), content_text, thread_id),
+        "authorName": author_name(getattr(thread, "user", None), getattr(thread, "author_id", 0)),
+        "replyCount": int(getattr(thread, "reply_num", 0)),
+        "lastReplyAt": int(last_time * 1000) if last_time else None,
+        "lastReplyLabel": format_time_label(last_time),
+        "excerpt": summarize(content_text),
+        "isTop": bool(getattr(thread, "is_top", False)),
+        "isGood": bool(getattr(thread, "is_good", False)),
+        "url": build_thread_url(thread_id, 1),
+    }
+
+
+def map_comment_preview(post: Any) -> dict[str, Any] | None:
+    comments = getattr(post, "comments", []) or []
+    reply_num = int(getattr(post, "reply_num", 0))
+    if not comments and reply_num <= 0:
+        return None
+
+    items = []
+    for comment in comments[:3]:
+        items.append(
+            {
+                "authorName": author_name(getattr(comment, "user", None), getattr(comment, "author_id", 0)),
+                "content": summarize(getattr(comment, "text", "") or getattr(getattr(comment, "contents", None), "text", ""), 80),
+                "isLz": bool(getattr(comment, "is_thread_author", False)),
+            }
+        )
+
+    return {
+        "total": reply_num or len(comments),
+        "items": items,
+    }
+
+
+def map_post(post: Any) -> dict[str, Any]:
+    rendered = render_contents(getattr(post, "contents", None), getattr(post, "sign", ""))
+    created_at = int(getattr(post, "create_time", 0) or 0)
+    return {
+        "postId": str(getattr(post, "pid")),
+        "floor": int(getattr(post, "floor", 0) or 0),
+        "authorName": author_name(getattr(post, "user", None), getattr(post, "author_id", 0)),
+        "authorId": author_id_value(getattr(post, "user", None), getattr(post, "author_id", 0)),
+        "createdAt": created_at * 1000 if created_at else None,
+        "createdAtLabel": format_time_label(created_at),
+        "contentHtml": rendered["html"],
+        "contentText": getattr(post, "text", "") or rendered["text"],
+        "imageUrls": rendered["imageUrls"],
+        "quoteBlocks": [],
+        "commentsPreview": map_comment_preview(post),
+        "isLz": bool(getattr(post, "is_thread_author", False)),
+    }
+
+
+def map_comment(comment: Any) -> dict[str, Any]:
+    created_at = int(getattr(comment, "create_time", 0) or 0)
+    return {
+        "authorName": author_name(getattr(comment, "user", None)),
+        "authorId": author_id_value(getattr(comment, "user", None)),
+        "content": getattr(comment, "text", "") or getattr(getattr(comment, "contents", None), "text", ""),
+        "createdAt": created_at * 1000 if created_at else None,
+        "createdAtLabel": format_time_label(created_at),
+        "isLz": bool(getattr(comment, "is_thread_author", False)),
+    }
+
+
+async def handle_get_forum_threads(tb: Any, request: dict[str, Any]) -> dict[str, Any]:
+    payload = request["payload"]
+    auth = request["auth"]
+    forum_name = str(payload["forumName"])
+    page = max(1, int(payload.get("page", 1)))
+
+    async with tb.Client(auth.get("bduss", ""), auth.get("stoken", "")) as client:
+        threads = await client.get_threads(forum_name, page)
+
+    resolved_forum_name = getattr(getattr(threads, "forum", None), "fname", "") or forum_name
+    current_page = int(getattr(getattr(threads, "page", None), "current_page", 0) or page)
+    total_page = int(getattr(getattr(threads, "page", None), "total_page", 0) or 0)
+
+    return {
+        "forumName": resolved_forum_name,
+        "page": current_page,
+        "pageCount": total_page or None,
+        "threads": [map_thread_summary(thread, resolved_forum_name) for thread in threads],
+        "sourceUrl": build_forum_url(resolved_forum_name, current_page),
+    }
+
+
+async def handle_get_thread_detail(tb: Any, request: dict[str, Any]) -> dict[str, Any]:
+    payload = request["payload"]
+    auth = request["auth"]
+    thread_id = int(payload["threadId"])
+    page = max(1, int(payload.get("page", 1)))
+
+    async with tb.Client(auth.get("bduss", ""), auth.get("stoken", "")) as client:
+        with_comments = bool(auth.get("bduss"))
+        try:
+            posts = await client.get_posts(thread_id, page, with_comments=with_comments, comment_rn=3)
+        except Exception:
+            if not with_comments:
+                raise
+            posts = await client.get_posts(thread_id, page, with_comments=False)
+
+    thread = getattr(posts, "thread", None)
+    forum = getattr(posts, "forum", None)
+    page_info = getattr(posts, "page", None)
+    thread_contents = getattr(thread, "contents", None)
+    fallback_text = getattr(thread_contents, "text", "") or ""
+    thread_title = normalize_title(getattr(thread, "title", ""), fallback_text, thread_id)
+    thread_author_id = getattr(thread, "author_id", 0)
+
+    reply_count = int(getattr(thread, "reply_num", 0) or 0)
+    if not getattr(page_info, "total_page", 0) and reply_count:
+        total_page = math.ceil(max(1, reply_count) / 30)
+    else:
+        total_page = int(getattr(page_info, "total_page", 0) or 0)
+
+    return {
+        "threadId": str(getattr(thread, "tid", thread_id)),
+        "title": thread_title,
+        "forumName": getattr(forum, "fname", "") or payload.get("forumName") or "贴吧",
+        "threadAuthorName": author_name(getattr(thread, "user", None), thread_author_id),
+        "threadAuthorId": author_id_value(getattr(thread, "user", None), thread_author_id),
+        "page": int(getattr(page_info, "current_page", 0) or page),
+        "pageCount": total_page or None,
+        "posts": [map_post(post) for post in posts],
+        "sourceUrl": build_thread_url(thread_id, page),
+    }
+
+
+async def handle_get_post_comments(tb: Any, request: dict[str, Any]) -> dict[str, Any]:
+    payload = request["payload"]
+    auth = request["auth"]
+    thread_id = int(payload["threadId"])
+    post_id = int(payload["postId"])
+    page = max(1, int(payload.get("page", 1)))
+
+    async with tb.Client(auth.get("bduss", ""), auth.get("stoken", "")) as client:
+        comments = await client.get_comments(thread_id, post_id, page)
+
+    total = int(getattr(getattr(comments, "page", None), "total_count", 0) or len(comments))
+    return {
+        "postId": str(post_id),
+        "total": total,
+        "items": [map_comment(comment) for comment in comments],
+    }
+
+
+async def handle_resolve_forum_names(tb: Any, request: dict[str, Any]) -> dict[str, Any]:
+    payload = request["payload"]
+    auth = request["auth"]
+    raw_names = payload.get("names", []) or []
+
+    names: list[str] = []
+    for value in raw_names[:8]:
+        candidate = str(value).strip()
+        if candidate and candidate not in names:
+            names.append(candidate)
+
+    if not names:
+        return {"names": []}
+
+    resolved: list[str] = []
+    async with tb.Client(auth.get("bduss", ""), auth.get("stoken", "")) as client:
+        for name in names:
+            try:
+                forum = await client.get_forum(name)
+            except Exception:
+                continue
+
+            forum_name = str(getattr(forum, "fname", "") or "").strip()
+            forum_id = int(getattr(forum, "fid", 0) or 0)
+            if not forum_name or forum_id <= 0:
+                continue
+
+            if forum_name not in resolved:
+                resolved.append(forum_name)
+
+    return {"names": resolved}
+
+
+async def dispatch(tb: Any, request: dict[str, Any]) -> dict[str, Any]:
+    action = request.get("action")
+    if action == "getForumThreads":
+        return await handle_get_forum_threads(tb, request)
+    if action == "getThreadDetail":
+        return await handle_get_thread_detail(tb, request)
+    if action == "getPostComments":
+        return await handle_get_post_comments(tb, request)
+    if action == "resolveForumNames":
+        return await handle_resolve_forum_names(tb, request)
+    raise ValueError(f"unsupported action: {action}")
+
+
+async def main() -> None:
+    try:
+        request = load_request()
+    except Exception as error:
+        fail("parse", f"bridge 输入解析失败：{error}")
+        return
+
+    try:
+        tb = ensure_aiotieba_import()
+    except Exception as error:
+        fail("bridge", str(error))
+        return
+
+    try:
+        result = await dispatch(tb, request)
+    except Exception as error:
+        fail("network", f"aiotieba 请求失败：{error}", repr(error))
+        return
+
+    emit({"ok": True, "result": result})
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

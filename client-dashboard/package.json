@@ -1,0 +1,12 @@
+{
+  "name": "client-dashboard",
+  "private": true,
+  "version": "0.3.2",
+  "scripts": {
+    "dev": "node ./src/app.ts",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  }
+}
