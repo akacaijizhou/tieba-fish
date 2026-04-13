@@ -66,9 +66,10 @@ export class PaginationTreeItem extends vscode.TreeItem {
 }
 
 export class InfoTreeItem extends vscode.TreeItem {
-  constructor(label: string, description?: string) {
+  constructor(label: string, description?: string, tooltip?: string | vscode.MarkdownString) {
     super(label, vscode.TreeItemCollapsibleState.None);
     this.description = description;
+    this.tooltip = tooltip;
     this.contextValue = "tieba.info";
     this.iconPath = new vscode.ThemeIcon("symbol-misc");
   }
@@ -98,5 +99,13 @@ export class EmptyTreeItem extends vscode.TreeItem {
         title: label
       };
     }
+  }
+}
+
+export class LoadingTreeItem extends vscode.TreeItem {
+  constructor(label = "正在加载...") {
+    super(label, vscode.TreeItemCollapsibleState.None);
+    this.contextValue = "tieba.loading";
+    this.iconPath = new vscode.ThemeIcon("loading~spin");
   }
 }

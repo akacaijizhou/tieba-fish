@@ -185,7 +185,7 @@ body {
   text-decoration: underline;
 }
 
-.post-content img {
+.post-content img:not(.tieba-emoji) {
   width: 72px;
   height: 72px;
   object-fit: cover;
@@ -197,8 +197,20 @@ body {
   cursor: zoom-in;
 }
 
-body.hide-images .post-content img {
+body.hide-images .post-content img:not(.tieba-emoji) {
   display: none;
+}
+
+.post-content img.tieba-emoji,
+.comment-content img.tieba-emoji {
+  width: 1.35em;
+  height: 1.35em;
+  margin: 0 0.12em;
+  border: 0;
+  border-radius: 0;
+  object-fit: contain;
+  vertical-align: text-bottom;
+  cursor: default;
 }
 
 .quote-block {
@@ -279,9 +291,37 @@ body.hide-images .post-content img {
   color: var(--reply-text);
 }
 
+.comment-content p {
+  margin: 0;
+}
+
+.comment-content a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.comment-content a:hover {
+  text-decoration: underline;
+}
+
 .comment-card + .comment-card {
   padding-top: 6px;
   border-top: 1px dashed var(--line);
+}
+
+.comment-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.button.button-subtle {
+  min-height: 22px;
+  padding: 1px 8px;
+  border-color: color-mix(in srgb, var(--line) 88%, transparent);
+  background: transparent;
 }
 
 .notice,

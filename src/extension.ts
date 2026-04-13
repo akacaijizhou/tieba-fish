@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { ForumSubscription, OpenTarget, ThreadSummary } from "./models/tieba";
+import { TiebaError } from "./services/errors";
 import { ForumNameSuggestion, TiebaService, TiebaStatusSnapshot } from "./services/tiebaService";
 import { BossFilesProvider } from "./views/bossFilesProvider";
 import { BossModeManager } from "./views/bossModeManager";
@@ -9,6 +10,15 @@ import { ForumPanelManager } from "./views/forumPanel";
 import { HistoryViewProvider } from "./views/historyViewProvider";
 import { LatestViewProvider } from "./views/latestViewProvider";
 import { ThreadPanelManager } from "./views/threadPanel";
+
+interface LoadableTreeProvider {
+  setLoading(loading: boolean): void;
+}
+
+interface TreeViewLoadingController {
+  dispose(): void;
+  run<T>(message: string, task: () => Promise<T>): Promise<T>;
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   const service = new TiebaService(context);
@@ -37,12 +47,35 @@ export function activate(context: vscode.ExtensionContext): void {
 
   void refreshStatusBar();
 
+  const followedForumsView = vscode.window.createTreeView("tieba.forums", {
+    treeDataProvider: followedForumsProvider
+  });
+  const latestView = vscode.window.createTreeView("tieba.latest", {
+    treeDataProvider: latestViewProvider
+  });
+  const historyView = vscode.window.createTreeView("tieba.history", {
+    treeDataProvider: historyViewProvider
+  });
+  const bossFilesView = vscode.window.createTreeView("tieba.bossFiles", {
+    treeDataProvider: bossFilesProvider
+  });
+
   context.subscriptions.push(
-    vscode.window.registerTreeDataProvider("tieba.forums", followedForumsProvider),
-    vscode.window.registerTreeDataProvider("tieba.latest", latestViewProvider),
-    vscode.window.registerTreeDataProvider("tieba.history", historyViewProvider),
-    vscode.window.registerTreeDataProvider("tieba.bossFiles", bossFilesProvider)
+    followedForumsView,
+    latestView,
+    historyView,
+    bossFilesView,
   );
+
+  const followedForumsLoading = createTreeViewLoadingController(
+    followedForumsView,
+    followedForumsProvider,
+    "正在加载关注吧..."
+  );
+  const latestViewLoading = createTreeViewLoadingController(latestView, latestViewProvider, "正在加载最新视图...");
+  const historyViewLoading = createTreeViewLoadingController(historyView, historyViewProvider, "正在加载历史...");
+
+  context.subscriptions.push(followedForumsLoading, latestViewLoading, historyViewLoading);
 
   context.subscriptions.push(
     service.onDidChange(() => {
@@ -80,64 +113,93 @@ export function activate(context: vscode.ExtensionContext): void {
       await vscode.commands.executeCommand("tieba.openForum", forum);
     }),
 
-    vscode.commands.registerCommand("tieba.configureAccount", async () => {
-      const hasAccountAuth = await service.hasAccountAuth();
-      const primaryInput = await vscode.window.showInputBox({
-        title: "配置贴吧账号",
-        prompt: hasAccountAuth
-          ? "粘贴新的 BDUSS，或整段 Cookie。插件会自动提取 BDUSS / STOKEN，并清理缓存。"
-          : "粘贴 BDUSS，或整段贴吧 Cookie。插件会自动提取 BDUSS / STOKEN。",
-        placeHolder: "例如：BDUSS=...; STOKEN=... 或直接粘贴 BDUSS 值",
-        password: true,
-        ignoreFocusOut: true,
-        validateInput: (input) => validateCredentialInput(input, "BDUSS", false)
-      });
+    vscode.commands.registerCommand("tieba.syncFollowedForums", async () => {
+      try {
+        const result = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: "正在同步我关注的贴吧",
+            cancellable: false
+          },
+          () => service.syncFollowedForums()
+        );
 
-      if (primaryInput === undefined) {
-        return;
-      }
-
-      const bduss = extractCredentialValue(primaryInput, "BDUSS");
-      if (!bduss) {
-        void vscode.window.showErrorMessage("没有识别到 BDUSS。可以直接粘贴 BDUSS 值，或整段包含 BDUSS 的 Cookie。");
-        return;
-      }
-
-      let stoken = extractCredentialValue(primaryInput, "STOKEN");
-      if (!stoken) {
-        const secondaryInput = await vscode.window.showInputBox({
-          title: "可选：配置 STOKEN",
-          prompt: "STOKEN 不是必填。留空并回车即可跳过。",
-          placeHolder: "例如：STOKEN=... 或直接粘贴 STOKEN 值",
-          password: true,
-          ignoreFocusOut: true,
-          validateInput: (input) => validateCredentialInput(input, "STOKEN", true)
-        });
-
-        if (secondaryInput === undefined) {
+        if (result.total === 0) {
+          void vscode.window.showInformationMessage("贴吧账号里还没有可导入的关注吧。");
           return;
         }
 
-        stoken = extractCredentialValue(secondaryInput, "STOKEN");
+        void vscode.window.showInformationMessage(
+          `同步完成：新增 ${result.added} 个，已存在 ${result.existing} 个。`
+        );
+      } catch (error) {
+        const normalized =
+          error instanceof TiebaError ? error : new TiebaError("unknown", error instanceof Error ? error.message : "同步失败。");
+        if (normalized.code === "auth") {
+          const action = await vscode.window.showErrorMessage(normalized.message, "去导入登录态");
+          if (action === "去导入登录态") {
+            await vscode.commands.executeCommand("tieba.configureAccount");
+          }
+          return;
+        }
+
+        void vscode.window.showErrorMessage(normalized.message);
+      }
+    }),
+
+    vscode.commands.registerCommand("tieba.configureAccount", async () => {
+      const hasLoginState = await service.hasLoginState();
+      const primaryInput = await vscode.window.showInputBox({
+        title: "导入贴吧登录态",
+        prompt: hasLoginState
+          ? "优先粘贴新的完整贴吧 Cookie。扩展会自动提取 BDUSS / STOKEN，并同步更新网页回退登录态。"
+          : "粘贴从浏览器复制的完整贴吧 Cookie。扩展会自动提取 BDUSS / STOKEN；也兼容直接粘贴 BDUSS。",
+        placeHolder: "例如：BDUSS=...; STOKEN=...; BAIDUID=...",
+        password: true,
+        ignoreFocusOut: true,
+        validateInput: (input) => validateLoginStateInput(input)
+      });
+
+      if (!primaryInput?.trim()) {
+        return;
       }
 
-      await service.saveAccountAuth({ bduss, stoken });
-      void vscode.window.showInformationMessage(
-        stoken
-          ? "贴吧账号凭据已保存到 VS Code Secret Storage。后续请求会优先走 aiotieba 数据源。"
-          : "BDUSS 已保存到 VS Code Secret Storage。后续请求会优先走 aiotieba 数据源。"
-      );
+      const imported = parseImportedLoginState(primaryInput);
+      if (!imported) {
+        void vscode.window.showErrorMessage("没有识别到 BDUSS。建议直接粘贴从浏览器复制的完整贴吧 Cookie。");
+        return;
+      }
+
+      await service.saveImportedLoginState(imported);
+      void vscode.window.showInformationMessage(buildImportedLoginStateMessage(imported));
+    }),
+
+    vscode.commands.registerCommand("tieba.importLoginStateFromClipboard", async () => {
+      const clipboardText = (await vscode.env.clipboard.readText()).trim();
+      if (!clipboardText) {
+        void vscode.window.showErrorMessage("剪贴板是空的。先在浏览器里复制贴吧 Cookie。");
+        return;
+      }
+
+      const imported = parseImportedLoginState(clipboardText);
+      if (!imported) {
+        void vscode.window.showErrorMessage("剪贴板里没有识别到贴吧登录态。建议先复制完整贴吧 Cookie。");
+        return;
+      }
+
+      await service.saveImportedLoginState(imported);
+      void vscode.window.showInformationMessage(buildImportedLoginStateMessage(imported));
     }),
 
     vscode.commands.registerCommand("tieba.clearAccount", async () => {
-      const hasAccountAuth = await service.hasAccountAuth();
-      if (!hasAccountAuth) {
-        void vscode.window.showInformationMessage("当前还没有配置贴吧账号。");
+      const hasLoginState = await service.hasLoginState();
+      if (!hasLoginState) {
+        void vscode.window.showInformationMessage("当前还没有导入贴吧登录态。");
         return;
       }
 
       const confirm = await vscode.window.showWarningMessage(
-        "清除本地保存的贴吧账号凭据？清除后 aiotieba 数据源将回到匿名访问。",
+        "清除本地保存的贴吧登录态？这会同时清除提取出来的 BDUSS / STOKEN 和已导入的 Cookie，之后将回到匿名访问。",
         { modal: true },
         "清除"
       );
@@ -146,8 +208,8 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      await service.clearAccountAuth();
-      void vscode.window.showInformationMessage("贴吧账号凭据已清除。");
+      await service.clearLoginState();
+      void vscode.window.showInformationMessage("贴吧登录态已清除。");
     }),
 
     vscode.commands.registerCommand("tieba.configureCookie", async () => {
@@ -204,7 +266,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("tieba.refreshLatest", async () => {
       try {
-        await service.refreshLatestThreads(true);
+        await latestViewLoading.run("正在刷新最新视图...", () => service.refreshLatestThreads(true));
       } catch (error) {
         const message = error instanceof Error ? error.message : "刷新最新数据失败。";
         void vscode.window.showErrorMessage(message);
@@ -218,7 +280,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       try {
-        await service.loadLatestThreadsPage(latest.page - 1, false);
+        await latestViewLoading.run("正在加载上一页...", () => service.loadLatestThreadsPage(latest.page - 1, false));
       } catch (error) {
         const message = error instanceof Error ? error.message : "加载上一页失败。";
         void vscode.window.showErrorMessage(message);
@@ -236,16 +298,17 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       try {
-        await service.loadLatestThreadsPage(latest.page + 1, false);
+        await latestViewLoading.run("正在加载下一页...", () => service.loadLatestThreadsPage(latest.page + 1, false));
       } catch (error) {
         const message = error instanceof Error ? error.message : "加载下一页失败。";
         void vscode.window.showErrorMessage(message);
       }
     }),
 
-    vscode.commands.registerCommand("tieba.openForum", async (target?: ForumSubscription) => {
-      if (target?.forumName) {
-        forumPanels.open(target);
+    vscode.commands.registerCommand("tieba.openForum", async (target?: ForumSubscription | { forum?: ForumSubscription }) => {
+      const resolvedTarget = resolveForumSubscription(target);
+      if (resolvedTarget?.forumName) {
+        forumPanels.open(resolvedTarget);
         return;
       }
 
@@ -263,19 +326,20 @@ export function activate(context: vscode.ExtensionContext): void {
       });
     }),
 
-    vscode.commands.registerCommand("tieba.removeForum", async (target?: ForumSubscription) => {
-      if (!target?.forumName) {
+    vscode.commands.registerCommand("tieba.removeForum", async (target?: ForumSubscription | { forum?: ForumSubscription }) => {
+      const resolvedTarget = resolveForumSubscription(target);
+      if (!resolvedTarget?.forumName) {
         return;
       }
 
       const confirm = await vscode.window.showWarningMessage(
-        `移除关注吧“${target.displayName}”？`,
+        `移除关注吧“${resolvedTarget.displayName}”？`,
         { modal: true },
         "移除"
       );
 
       if (confirm === "移除") {
-        await service.removeForum(target.forumName);
+        await service.removeForum(resolvedTarget.forumName);
       }
     }),
 
@@ -351,22 +415,28 @@ function resolveUrl(service: TiebaService, target?: OpenTarget): string | undefi
   return undefined;
 }
 
-function validateCredentialInput(input: string, key: "BDUSS" | "STOKEN", optional: boolean): string | undefined {
+interface ImportedLoginState {
+  bduss: string;
+  stoken?: string;
+  cookie?: string;
+}
+
+function validateLoginStateInput(input: string): string | undefined {
   const value = input.trim();
   if (!value) {
-    return optional ? undefined : `${key} 不能为空。`;
+    return undefined;
   }
 
-  const extracted = extractCredentialValue(value, key);
-  if (!extracted) {
-    return `没有识别到 ${key}。可以直接粘贴 ${key} 值，或整段包含 ${key}=... 的 Cookie。`;
+  const imported = parseImportedLoginState(value);
+  if (!imported) {
+    return "没有识别到 BDUSS。建议直接粘贴从浏览器复制的完整贴吧 Cookie。";
   }
 
-  if (/\s/.test(extracted)) {
-    return `${key} 不应包含空白字符。`;
+  if (/\s/.test(imported.bduss)) {
+    return "BDUSS 不应包含空白字符。";
   }
 
-  if (key === "BDUSS" && extracted.length < 20) {
+  if (imported.bduss.length < 20) {
     return "识别到的 BDUSS 长度偏短，建议确认是否复制完整。";
   }
 
@@ -393,6 +463,48 @@ function extractCredentialValue(input: string, key: "BDUSS" | "STOKEN"): string 
   return undefined;
 }
 
+function parseImportedLoginState(input: string): ImportedLoginState | undefined {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const bduss = extractCredentialValue(trimmed, "BDUSS");
+  if (!bduss) {
+    return undefined;
+  }
+
+  const stoken = extractCredentialValue(trimmed, "STOKEN");
+  return {
+    bduss,
+    stoken,
+    cookie: looksLikeCookieString(trimmed) ? trimmed : undefined
+  };
+}
+
+function looksLikeCookieString(input: string): boolean {
+  const trimmed = input.trim();
+  if (!trimmed.includes("=") || !trimmed.includes(";")) {
+    return false;
+  }
+
+  return /(?:^|;\s*)[A-Za-z0-9_\-]+=/.test(trimmed);
+}
+
+function buildImportedLoginStateMessage(imported: ImportedLoginState): string {
+  if (!imported.stoken) {
+    return imported.cookie
+      ? "贴吧登录态已导入，但没有检测到 STOKEN。普通阅读可以继续使用；同步我关注的贴吧仍建议重新导入完整 Cookie。"
+      : "BDUSS 已导入。普通阅读可以继续使用；同步我关注的贴吧仍需要包含 STOKEN 的完整 Cookie。";
+  }
+
+  if (imported.cookie) {
+    return "贴吧登录态已导入。后续请求会优先走 aiotieba，网页回退也会复用这份 Cookie。";
+  }
+
+  return "贴吧登录态已导入。后续请求会优先走 aiotieba 数据源。";
+}
+
 function validateCookieInput(input: string): string | undefined {
   const value = input.trim();
   if (!value) {
@@ -408,6 +520,105 @@ function validateCookieInput(input: string): string | undefined {
   }
 
   return undefined;
+}
+
+function resolveForumSubscription(
+  target?: ForumSubscription | { forum?: ForumSubscription }
+): ForumSubscription | undefined {
+  if (!target) {
+    return undefined;
+  }
+
+  if ("forumName" in target && typeof target.forumName === "string") {
+    return target;
+  }
+
+  if ("forum" in target && target.forum?.forumName) {
+    return target.forum;
+  }
+
+  return undefined;
+}
+
+function createTreeViewLoadingController(
+  view: vscode.TreeView<vscode.TreeItem>,
+  provider: LoadableTreeProvider,
+  message: string
+): TreeViewLoadingController {
+  let timer: NodeJS.Timeout | undefined;
+  let activeRuns = 0;
+
+  const setLoading = (loading: boolean, currentMessage?: string): void => {
+    provider.setLoading(loading);
+    view.message = loading ? currentMessage : undefined;
+  };
+
+  const stopLoading = (): void => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+
+    if (activeRuns > 0) {
+      return;
+    }
+
+    setLoading(false);
+  };
+
+  const startLoading = (): void => {
+    if (!view.visible || activeRuns > 0) {
+      return;
+    }
+
+    if (timer) {
+      clearTimeout(timer);
+    }
+
+    setLoading(true, message);
+    timer = setTimeout(() => {
+      if (activeRuns === 0) {
+        setLoading(false);
+      }
+      timer = undefined;
+    }, 80);
+  };
+
+  startLoading();
+
+  const visibilityDisposable = view.onDidChangeVisibility(() => {
+    if (view.visible) {
+      startLoading();
+      return;
+    }
+
+    stopLoading();
+  });
+
+  return {
+    async run<T>(currentMessage: string, task: () => Promise<T>): Promise<T> {
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+
+      activeRuns += 1;
+      setLoading(true, currentMessage);
+
+      try {
+        return await task();
+      } finally {
+        activeRuns = Math.max(0, activeRuns - 1);
+        if (activeRuns === 0) {
+          setLoading(false);
+        }
+      }
+    },
+    dispose(): void {
+      visibilityDisposable.dispose();
+      stopLoading();
+    }
+  };
 }
 
 function buildTiebaStatusBarText(snapshot: TiebaStatusSnapshot): string {

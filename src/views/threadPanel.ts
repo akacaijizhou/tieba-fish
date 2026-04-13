@@ -106,6 +106,7 @@ export class ThreadPanelManager {
         case "loadPostComments":
           {
             const postId = String(message.payload?.postId ?? "");
+            const page = Math.max(1, Number(message.payload?.page ?? 1) || 1);
             if (!postId) {
               break;
             }
@@ -113,14 +114,16 @@ export class ThreadPanelManager {
             panel.webview.postMessage({
               type: "postCommentsLoading",
               payload: {
-                postId
+                postId,
+                page
               }
             });
 
             try {
               const comments = await this.service.getPostComments({
                 threadId: thread.threadId,
-                postId
+                postId,
+                page
               });
               panel.webview.postMessage({
                 type: "postCommentsLoaded",

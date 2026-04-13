@@ -43,6 +43,13 @@
     return posts.filter((post) => post.isLz);
   }
 
+  function renderCommentContent(item) {
+    if (item.contentHtml) {
+      return item.contentHtml;
+    }
+    return escapeHtml(item.contentText || "");
+  }
+
   function renderComments(post) {
     if (!post.commentsPreview) {
       return "";
@@ -51,8 +58,13 @@
     const isExpanded = !!state.expandedComments[post.postId];
     const loadedState = state.postComments[post.postId];
     const previewItems = post.commentsPreview.items || [];
-    const items = loadedState?.items || previewItems;
+    const items = isExpanded ? loadedState?.items || [] : previewItems;
     const total = loadedState?.total || post.commentsPreview.total;
+    const currentPage = loadedState?.page || 1;
+    const pageCount = loadedState?.pageCount || 1;
+    const hasPrev = loadedState?.hasPrev ?? (currentPage > 1);
+    const hasMore = loadedState?.hasMore ?? (pageCount > currentPage);
+    const hasLoadedComments = !!loadedState;
 
     return `
       <div class="comment-thread">
@@ -69,8 +81,8 @@
         </div>
         ${isExpanded
           ? loadedState?.loading
-            ? '<div class="hint">正在加载楼中楼…</div>'
-            : loadedState?.error
+            ? `<div class="hint">正在加载楼中楼${loadedState.page ? ` · 第 ${escapeHtml(loadedState.page)} 页` : ""}…</div>`
+            : loadedState?.error && items.length === 0
               ? `<div class="hint">${escapeHtml(loadedState.error)}</div>`
               : items.length > 0
                 ? `<div class="comment-list">
@@ -83,12 +95,26 @@
                               ${item.isLz ? '<span class="tag">楼主</span>' : ""}
                               ${item.createdAtLabel ? `<span>${escapeHtml(item.createdAtLabel)}</span>` : ""}
                             </div>
-                            <div class="comment-content">${escapeHtml(item.content)}</div>
+                            <div class="comment-content">${renderCommentContent(item)}</div>
                           </div>
                         `
                       )
                       .join("")}
-                  </div>`
+                  </div>
+                  ${
+                    hasLoadedComments
+                      ? `<div class="comment-pagination">
+                          <button class="button button-subtle" data-comments-page="${escapeHtml(post.postId)}:${escapeHtml(
+                            String(currentPage - 1)
+                          )}"${hasPrev ? "" : " disabled"}>上一页</button>
+                          <div class="hint">第 ${escapeHtml(currentPage)}${pageCount ? ` / ${escapeHtml(pageCount)}` : ""} 页</div>
+                          <button class="button button-subtle" data-comments-page="${escapeHtml(post.postId)}:${escapeHtml(
+                            String(currentPage + 1)
+                          )}"${hasMore ? "" : " disabled"}>下一页</button>
+                        </div>`
+                      : ""
+                  }
+                  ${loadedState?.error && items.length > 0 ? `<div class="hint">${escapeHtml(loadedState.error)}</div>` : ""}`
                 : '<div class="hint">这层有楼中楼，但当前没有拿到可展示的评论内容。</div>'
           : ""}
       </div>
@@ -135,7 +161,6 @@
         <div class="hint">${escapeHtml(state.error.message)}</div>
         <div class="toolbar">
           <button class="button" data-action="refresh">重试</button>
-          <button class="button" data-action="browser">VS Code 浏览器</button>
           <button class="button" data-action="external">系统浏览器</button>
         </div>
       </section>
@@ -189,10 +214,8 @@
             </div>
             <div class="toolbar">
               <button class="button" data-action="refresh">刷新</button>
-              <button class="button${state.favorite ? " is-active" : ""}" data-action="favorite">${state.favorite ? "已收藏" : "收藏"}</button>
               <button class="button${state.onlyLz ? " is-active" : ""}" data-action="onlyLz">${state.onlyLz ? "只看楼主中" : "只看楼主"}</button>
               <button class="button" data-action="images">${state.settings.showImages ? "隐藏图片" : "显示图片"}</button>
-              <button class="button" data-action="browser">VS Code 浏览器</button>
               <button class="button" data-action="external">系统浏览器</button>
             </div>
           </div>
@@ -246,7 +269,7 @@
       });
     });
 
-    app.querySelectorAll(".post-content img").forEach((element) => {
+    app.querySelectorAll(".post-content img:not(.tieba-emoji)").forEach((element) => {
       element.classList.add("thumb-image");
       element.addEventListener("click", (event) => {
         event.preventDefault();
@@ -274,15 +297,30 @@
         };
 
         if (nextExpanded) {
-          const post = (state.detail?.posts || []).find((item) => item.postId === postId);
-          const hasInlinePreview = !!post?.commentsPreview?.items?.length;
-          const hasLoadedComments = !!state.postComments[postId]?.items;
-          if (!hasInlinePreview && !hasLoadedComments) {
-            send("loadPostComments", { postId });
+          const loadedState = state.postComments[postId];
+          if (!loadedState?.items?.length) {
+            send("loadPostComments", { postId, page: 1 });
           }
         }
 
         render();
+      });
+    });
+
+    app.querySelectorAll("[data-comments-page]").forEach((element) => {
+      element.addEventListener("click", () => {
+        const raw = element.getAttribute("data-comments-page");
+        if (!raw) {
+          return;
+        }
+
+        const [postId, pageText] = raw.split(":");
+        const page = Number.parseInt(pageText || "", 10);
+        if (!postId || !Number.isFinite(page) || page <= 0) {
+          return;
+        }
+
+        send("loadPostComments", { postId, page });
       });
     });
   }
@@ -364,7 +402,8 @@
             ...state.postComments[payload.postId],
             loading: true,
             error: null,
-            items: state.postComments[payload.postId]?.items
+            page: payload.page || state.postComments[payload.postId]?.page || 1,
+            items: state.postComments[payload.postId]?.items || []
           }
         }
       };
@@ -379,6 +418,10 @@
           [payload.postId]: {
             loading: false,
             error: null,
+            page: payload.page || 1,
+            pageCount: payload.pageCount || 1,
+            hasPrev: !!payload.hasPrev,
+            hasMore: !!payload.hasMore,
             total: payload.total,
             items: payload.items
           }
@@ -395,7 +438,12 @@
           [payload.postId]: {
             loading: false,
             error: payload.message,
-            items: []
+            page: state.postComments[payload.postId]?.page || 1,
+            pageCount: state.postComments[payload.postId]?.pageCount || 1,
+            hasPrev: state.postComments[payload.postId]?.hasPrev || false,
+            hasMore: state.postComments[payload.postId]?.hasMore || false,
+            total: state.postComments[payload.postId]?.total || 0,
+            items: state.postComments[payload.postId]?.items || []
           }
         }
       };

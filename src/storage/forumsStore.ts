@@ -2,6 +2,18 @@ import * as vscode from "vscode";
 import { ForumSubscription } from "../models/tieba";
 import { STORAGE_KEYS } from "./storageKeys";
 
+export interface SyncForumInput {
+  forumId?: string;
+  forumName: string;
+  displayName?: string;
+}
+
+export interface SyncForumsResult {
+  added: number;
+  existing: number;
+  total: number;
+}
+
 export class ForumsStore {
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -31,5 +43,49 @@ export class ForumsStore {
   async remove(forumName: string): Promise<void> {
     const next = this.list().filter((forum) => forum.forumName !== forumName);
     await this.context.globalState.update(STORAGE_KEYS.forums, next);
+  }
+
+  async mergeFromAccount(inputs: SyncForumInput[]): Promise<SyncForumsResult> {
+    const forums = this.list();
+    const next = [...forums];
+    const existingByName = new Map(forums.map((forum) => [forum.forumName, forum]));
+    let added = 0;
+    let existing = 0;
+
+    for (const input of inputs) {
+      const forumName = input.forumName.trim();
+      if (!forumName) {
+        continue;
+      }
+
+      const current = existingByName.get(forumName);
+      if (current) {
+        existing += 1;
+        if (!current.forumId && input.forumId) {
+          current.forumId = input.forumId;
+        }
+        if (!current.displayName && input.displayName?.trim()) {
+          current.displayName = input.displayName.trim();
+        }
+        continue;
+      }
+
+      const created: ForumSubscription = {
+        forumId: input.forumId?.trim() || undefined,
+        forumName,
+        displayName: input.displayName?.trim() || forumName,
+        addedAt: Date.now()
+      };
+      next.push(created);
+      existingByName.set(forumName, created);
+      added += 1;
+    }
+
+    await this.context.globalState.update(STORAGE_KEYS.forums, next);
+    return {
+      added,
+      existing,
+      total: added + existing
+    };
   }
 }

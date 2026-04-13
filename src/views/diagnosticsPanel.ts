@@ -169,10 +169,10 @@ export class DiagnosticsPanel {
       items.push("先安装可用 Python，并执行 `python -m pip install aiotieba`。");
     }
     if (!report.hasBduss) {
-      items.push("在命令面板执行 `Tieba: 配置贴吧账号 (BDUSS/STOKEN)`。");
+      items.push("在命令面板执行 `导入贴吧登录态`。");
     }
     if (!report.hasCookie) {
-      items.push("如需网页回退更稳，可额外配置 `Tieba: 配置贴吧 Cookie`。");
+      items.push("如需网页回退更稳，可额外配置 `配置贴吧 Cookie`。");
     }
     if (items.length === 0) {
       items.push("当前主路径条件已经满足，可以直接以结构化阅读模式继续用。");

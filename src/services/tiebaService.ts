@@ -12,7 +12,7 @@ import {
 } from "../models/tieba";
 import { CacheStore } from "../storage/cacheStore";
 import { FavoritesStore } from "../storage/favoritesStore";
-import { ForumsStore } from "../storage/forumsStore";
+import { ForumsStore, SyncForumsResult } from "../storage/forumsStore";
 import { HistoryStore } from "../storage/historyStore";
 import { LatestThreadsStore } from "../storage/latestThreadsStore";
 import { SettingsStore } from "../storage/settingsStore";
@@ -58,6 +58,8 @@ export interface TiebaDiagnosticsReport extends TiebaStatusSnapshot {
   };
   settings: TiebaSettings;
 }
+
+export interface FollowedForumsSyncResult extends SyncForumsResult {}
 
 export class TiebaService {
   private readonly forumsStore: ForumsStore;
@@ -162,6 +164,35 @@ export class TiebaService {
     return forum;
   }
 
+  async syncFollowedForums(): Promise<FollowedForumsSyncResult> {
+    const auth = await this.authStore.getAccountAuth();
+    if (!auth.bduss || !auth.stoken) {
+      throw new TiebaError(
+        "auth",
+        "同步我关注的贴吧需要完整登录态。请导入包含 STOKEN 的完整贴吧 Cookie。"
+      );
+    }
+
+    try {
+      const forums = await this.bridgeDataSource.getSelfFollowForumsAll();
+      const result = await this.forumsStore.mergeFromAccount(
+        forums.map((forum) => ({
+          forumId: forum.forumId,
+          forumName: forum.forumName,
+          displayName: forum.forumName
+        }))
+      );
+
+      this.recordResolvedSource("aiotieba");
+      this.changeEmitter.fire();
+      return result;
+    } catch (error) {
+      const normalized = normalizeTiebaError(error);
+      this.recordFailure(normalized);
+      throw normalized;
+    }
+  }
+
   async removeForum(forumName: string): Promise<void> {
     await this.forumsStore.remove(forumName);
     this.changeEmitter.fire();
@@ -200,7 +231,7 @@ export class TiebaService {
   async refreshLatestThreads(forceRefresh = true): Promise<LatestThreadsSnapshot> {
     const latest = this.getLatestThreads();
     if (!latest) {
-      throw new TiebaError("parse", "还没有最新数据。先点开一个关注吧。");
+      throw new TiebaError("parse", "还没有最新视图数据。先点开一个关注吧，这里会承接该吧最近一次加载的帖子列表。");
     }
 
     const pageData = await this.getForumThreads(latest.forumName, latest.page, forceRefresh);
@@ -210,7 +241,7 @@ export class TiebaService {
   async loadLatestThreadsPage(page: number, forceRefresh = false): Promise<LatestThreadsSnapshot> {
     const latest = this.getLatestThreads();
     if (!latest) {
-      throw new TiebaError("parse", "还没有最新数据。先点开一个关注吧。");
+      throw new TiebaError("parse", "还没有最新视图数据。先点开一个关注吧，这里会承接该吧最近一次加载的帖子列表。");
     }
 
     const nextPage = Math.max(1, page);
@@ -226,6 +257,28 @@ export class TiebaService {
     return this.authStore.hasBduss();
   }
 
+  async hasLoginState(): Promise<boolean> {
+    const [auth, cookie] = await Promise.all([this.authStore.getAccountAuth(), this.authStore.getCookie()]);
+    return Boolean(auth.bduss || cookie);
+  }
+
+  async saveImportedLoginState(input: { bduss: string; stoken?: string; cookie?: string }): Promise<void> {
+    await this.authStore.setAccountAuth({
+      bduss: input.bduss,
+      stoken: input.stoken
+    });
+
+    if (input.cookie?.trim()) {
+      await this.authStore.setCookie(input.cookie.trim());
+    } else {
+      await this.authStore.clearCookie();
+    }
+
+    await this.clearCaches();
+    this.changeEmitter.fire();
+    this.statusEmitter.fire();
+  }
+
   async saveAccountAuth(input: { bduss: string; stoken?: string }): Promise<void> {
     await this.authStore.setAccountAuth(input);
     await this.clearCaches();
@@ -235,6 +288,13 @@ export class TiebaService {
 
   async clearAccountAuth(): Promise<void> {
     await this.authStore.clearAccountAuth();
+    await this.clearCaches();
+    this.changeEmitter.fire();
+    this.statusEmitter.fire();
+  }
+
+  async clearLoginState(): Promise<void> {
+    await Promise.all([this.authStore.clearAccountAuth(), this.authStore.clearCookie()]);
     await this.clearCaches();
     this.changeEmitter.fire();
     this.statusEmitter.fire();

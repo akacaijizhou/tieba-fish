@@ -10,7 +10,7 @@ import sys
 from dataclasses import is_dataclass
 from datetime import datetime
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 logging.basicConfig(level=logging.CRITICAL)
 logging.disable(logging.CRITICAL)
@@ -135,8 +135,26 @@ def safe_url(value: Any) -> str:
 def normalize_remote_url(value: Any) -> str:
     text = str(value)
     if text.startswith("http://"):
+        host = urlsplit(text).hostname or ""
+        if host.endswith("static.tieba.baidu.com"):
+            return text
         return "https://" + text[len("http://") :]
     return text
+
+
+def build_emoji_url(emoji_id: Any) -> str | None:
+    normalized = str(emoji_id or "").strip()
+    if not normalized:
+        return None
+
+    if not all(char.isalnum() or char in {"_", "-"} for char in normalized):
+        return None
+
+    # Legacy Tieba "呵呵" emoji uses the bare id but the actual asset is numbered.
+    if normalized == "image_emoticon":
+        normalized = "image_emoticon1"
+
+    return f"http://static.tieba.baidu.com/tb/editor/images/client/{quote(normalized)}.png"
 
 
 def flush_inline_buffer(blocks: list[str], inline_parts: list[str]) -> None:
@@ -150,27 +168,41 @@ def render_contents(contents: Any, sign: str = "") -> dict[str, Any]:
     blocks: list[str] = []
     inline_parts: list[str] = []
     image_urls: list[str] = []
+    text_parts: list[str] = []
 
     for fragment in getattr(contents, "objs", []) or []:
         class_name = fragment.__class__.__name__.lower()
 
         if hasattr(fragment, "raw_url") and hasattr(fragment, "title"):
             url = safe_url(getattr(fragment, "url", getattr(fragment, "raw_url", "")))
-            title = escape_text(getattr(fragment, "title", "") or getattr(fragment, "text", "") or url)
-            inline_parts.append(f'<a href="{url}">{title}</a>')
+            label = str(getattr(fragment, "title", "") or getattr(fragment, "text", "") or url)
+            inline_parts.append(f'<a href="{url}">{escape_text(label)}</a>')
+            text_parts.append(label)
             continue
 
         if hasattr(fragment, "user_id") and hasattr(fragment, "text"):
-            inline_parts.append(f"<span>{escape_text(fragment.text)}</span>")
+            text = str(getattr(fragment, "text", ""))
+            inline_parts.append(f"<span>{escape_text(text)}</span>")
+            text_parts.append(text)
             continue
 
         if hasattr(fragment, "desc") and hasattr(fragment, "id"):
-            inline_parts.append(f"<span>{escape_text(fragment.desc or '[表情]')}</span>")
+            desc = str(getattr(fragment, "desc", "") or "[表情]")
+            emoji_url = build_emoji_url(getattr(fragment, "id", ""))
+            if emoji_url:
+                inline_parts.append(
+                    f'<img class="tieba-emoji" src="{safe_url(emoji_url)}" alt="{escape_text(desc)}" title="{escape_text(desc)}" />'
+                )
+            else:
+                inline_parts.append(f"<span>{escape_text(desc)}</span>")
+            text_parts.append(desc)
             continue
 
         if hasattr(fragment, "text") and hasattr(fragment, "url") and not hasattr(fragment, "raw_url"):
             url = safe_url(fragment.url)
-            inline_parts.append(f'<a href="{url}">{escape_text(fragment.text or url)}</a>')
+            label = str(getattr(fragment, "text", "") or url)
+            inline_parts.append(f'<a href="{url}">{escape_text(label)}</a>')
+            text_parts.append(label)
             continue
 
         if hasattr(fragment, "origin_src") and hasattr(fragment, "src"):
@@ -188,32 +220,40 @@ def render_contents(contents: Any, sign: str = "") -> dict[str, Any]:
             cover_src = getattr(fragment, "cover_src", "")
             if cover_src:
                 blocks.append(f'<img src="{safe_url(cover_src)}" alt="Tieba video cover" loading="lazy" />')
+            text_parts.append(label)
             continue
 
         if "voice" in class_name and hasattr(fragment, "duration"):
             flush_inline_buffer(blocks, inline_parts)
             duration = int(getattr(fragment, "duration", 0) or 0)
-            blocks.append(f'<p class="subtle">[语音] {escape_text(str(duration))} 秒</p>')
+            label = f"[语音] {duration} 秒"
+            blocks.append(f'<p class="subtle">{escape_text(label)}</p>')
+            text_parts.append(label)
             continue
 
         if hasattr(fragment, "text"):
-            inline_parts.append(escape_text(getattr(fragment, "text", "")))
+            text = str(getattr(fragment, "text", ""))
+            inline_parts.append(escape_text(text))
+            text_parts.append(text)
             continue
 
         if is_dataclass(fragment):
-            inline_parts.append(escape_text(str(fragment)))
+            text = str(fragment)
+            inline_parts.append(escape_text(text))
+            text_parts.append(text)
 
     flush_inline_buffer(blocks, inline_parts)
 
     if sign.strip():
         blocks.append(f'<p class="subtle">{escape_text(sign.strip())}</p>')
+        text_parts.append(sign.strip())
 
     if not blocks:
         blocks.append('<p class="subtle">[内容为空]</p>')
 
     return {
         "html": "".join(blocks),
-        "text": getattr(contents, "text", "") or "",
+        "text": "".join(text_parts).strip(),
         "imageUrls": image_urls,
     }
 
@@ -288,10 +328,12 @@ def map_comment_preview(post: Any) -> dict[str, Any] | None:
 
     items = []
     for comment in comments[:3]:
+        rendered = render_contents(getattr(comment, "contents", None))
         items.append(
             {
                 "authorName": author_name(getattr(comment, "user", None), getattr(comment, "author_id", 0)),
-                "content": summarize(getattr(comment, "text", "") or getattr(getattr(comment, "contents", None), "text", ""), 80),
+                "contentHtml": rendered["html"],
+                "contentText": getattr(comment, "text", "") or rendered["text"],
                 "isLz": bool(getattr(comment, "is_thread_author", False)),
             }
         )
@@ -323,10 +365,12 @@ def map_post(post: Any) -> dict[str, Any]:
 
 def map_comment(comment: Any) -> dict[str, Any]:
     created_at = int(getattr(comment, "create_time", 0) or 0)
+    rendered = render_contents(getattr(comment, "contents", None))
     return {
         "authorName": author_name(getattr(comment, "user", None)),
         "authorId": author_id_value(getattr(comment, "user", None)),
-        "content": getattr(comment, "text", "") or getattr(getattr(comment, "contents", None), "text", ""),
+        "contentHtml": rendered["html"],
+        "contentText": getattr(comment, "text", "") or rendered["text"],
         "createdAt": created_at * 1000 if created_at else None,
         "createdAtLabel": format_time_label(created_at),
         "isLz": bool(getattr(comment, "is_thread_author", False)),
@@ -407,9 +451,16 @@ async def handle_get_post_comments(tb: Any, request: dict[str, Any]) -> dict[str
     async with tb.Client(auth.get("bduss", ""), auth.get("stoken", "")) as client:
         comments = await client.get_comments(thread_id, post_id, page)
 
-    total = int(getattr(getattr(comments, "page", None), "total_count", 0) or len(comments))
+    page_info = getattr(comments, "page", None)
+    total = int(getattr(page_info, "total_count", 0) or len(comments))
+    current_page = int(getattr(page_info, "current_page", 0) or page)
+    total_page = int(getattr(page_info, "total_page", 0) or 0)
     return {
         "postId": str(post_id),
+        "page": current_page,
+        "pageCount": total_page or None,
+        "hasPrev": bool(getattr(page_info, "has_prev", False)),
+        "hasMore": bool(getattr(page_info, "has_more", False)),
         "total": total,
         "items": [map_comment(comment) for comment in comments],
     }
@@ -448,6 +499,44 @@ async def handle_resolve_forum_names(tb: Any, request: dict[str, Any]) -> dict[s
     return {"names": resolved}
 
 
+async def handle_get_self_follow_forums_all(tb: Any, request: dict[str, Any]) -> dict[str, Any]:
+    auth = request["auth"]
+    stoken = str(auth.get("stoken", "") or "").strip()
+    if not stoken:
+        raise RuntimeError("同步我关注的贴吧需要 STOKEN。请重新配置贴吧账号，或粘贴包含 STOKEN 的完整 Cookie。")
+
+    page_size = max(1, min(200, int(request.get("payload", {}).get("pageSize", 200) or 200)))
+    forums: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    page = 1
+
+    async with tb.Client(auth.get("bduss", ""), stoken) as client:
+        while True:
+            response = await client.get_self_follow_forums(page, rn=page_size)
+            for forum in response:
+                forum_name = str(getattr(forum, "fname", "") or "").strip()
+                if not forum_name or forum_name in seen_names:
+                    continue
+
+                seen_names.add(forum_name)
+                forum_id = int(getattr(forum, "fid", 0) or 0)
+                forums.append(
+                    {
+                        "forumId": str(forum_id) if forum_id > 0 else None,
+                        "forumName": forum_name,
+                        "level": int(getattr(forum, "level", 0) or 0),
+                        "isSigned": bool(getattr(forum, "is_signed", False)),
+                    }
+                )
+
+            if not bool(getattr(response, "has_more", False)):
+                break
+
+            page += 1
+
+    return {"forums": forums}
+
+
 async def dispatch(tb: Any, request: dict[str, Any]) -> dict[str, Any]:
     action = request.get("action")
     if action == "healthCheck":
@@ -460,6 +549,8 @@ async def dispatch(tb: Any, request: dict[str, Any]) -> dict[str, Any]:
         return await handle_get_post_comments(tb, request)
     if action == "resolveForumNames":
         return await handle_resolve_forum_names(tb, request)
+    if action == "getSelfFollowForumsAll":
+        return await handle_get_self_follow_forums_all(tb, request)
     raise ValueError(f"unsupported action: {action}")
 
 

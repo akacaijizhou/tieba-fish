@@ -1,4 +1,5 @@
 export interface ForumSubscription {
+  forumId?: string;
   forumName: string;
   displayName: string;
   addedAt: number;
@@ -47,7 +48,8 @@ export interface PostItem {
     total: number;
     items: Array<{
       authorName: string;
-      content: string;
+      contentHtml: string;
+      contentText?: string;
       isLz?: boolean;
     }>;
   };
@@ -57,7 +59,8 @@ export interface PostItem {
 export interface PostCommentItem {
   authorName: string;
   authorId?: string;
-  content: string;
+  contentHtml: string;
+  contentText?: string;
   createdAt?: number;
   createdAtLabel?: string;
   isLz?: boolean;
@@ -65,6 +68,10 @@ export interface PostCommentItem {
 
 export interface PostCommentsPage {
   postId: string;
+  page: number;
+  pageCount?: number;
+  hasPrev?: boolean;
+  hasMore?: boolean;
   total: number;
   items: PostCommentItem[];
 }

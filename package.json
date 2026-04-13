@@ -18,7 +18,9 @@
     "onView:tieba.latest",
     "onView:tieba.history",
     "onCommand:tieba.addForum",
+    "onCommand:tieba.syncFollowedForums",
     "onCommand:tieba.configureAccount",
+    "onCommand:tieba.importLoginStateFromClipboard",
     "onCommand:tieba.clearAccount",
     "onCommand:tieba.configureCookie",
     "onCommand:tieba.clearCookie",
@@ -65,93 +67,83 @@
     "commands": [
       {
         "command": "tieba.addForum",
-        "title": "Tieba: 添加贴吧",
-        "category": "Tieba"
+        "title": "添加贴吧"
       },
       {
         "command": "tieba.refreshAll",
-        "title": "Tieba: 刷新视图",
-        "category": "Tieba"
+        "title": "刷新视图"
+      },
+      {
+        "command": "tieba.syncFollowedForums",
+        "title": "同步我关注的贴吧"
       },
       {
         "command": "tieba.refreshLatest",
-        "title": "Tieba: 刷新",
-        "category": "Tieba"
+        "title": "刷新"
       },
       {
         "command": "tieba.latestPreviousPage",
-        "title": "Tieba: 最新数据上一页",
-        "category": "Tieba"
+        "title": "最新数据上一页"
       },
       {
         "command": "tieba.latestNextPage",
-        "title": "Tieba: 最新数据下一页",
-        "category": "Tieba"
+        "title": "最新数据下一页"
       },
       {
         "command": "tieba.configureAccount",
-        "title": "Tieba: 配置贴吧账号 (BDUSS/STOKEN)",
-        "category": "Tieba"
+        "title": "导入贴吧登录态"
+      },
+      {
+        "command": "tieba.importLoginStateFromClipboard",
+        "title": "从剪贴板导入贴吧登录态"
       },
       {
         "command": "tieba.clearAccount",
-        "title": "Tieba: 清除贴吧账号",
-        "category": "Tieba"
+        "title": "清除贴吧登录态"
       },
       {
         "command": "tieba.configureCookie",
-        "title": "Tieba: 配置贴吧 Cookie",
-        "category": "Tieba"
+        "title": "配置贴吧 Cookie"
       },
       {
         "command": "tieba.clearCookie",
-        "title": "Tieba: 清除贴吧 Cookie",
-        "category": "Tieba"
+        "title": "清除贴吧 Cookie"
       },
       {
         "command": "tieba.openForum",
-        "title": "Tieba: 打开贴吧",
-        "category": "Tieba"
+        "title": "打开贴吧"
       },
       {
         "command": "tieba.removeForum",
-        "title": "Tieba: 移除贴吧",
-        "category": "Tieba"
+        "title": "移除贴吧"
       },
       {
         "command": "tieba.openThread",
-        "title": "Tieba: 打开帖子",
-        "category": "Tieba"
+        "title": "打开帖子"
       },
       {
         "command": "tieba.openThreadByUrl",
-        "title": "Tieba: 浏览指定链接",
-        "category": "Tieba"
+        "title": "浏览指定链接"
       },
       {
         "command": "tieba.openExternal",
-        "title": "Tieba: 在浏览器打开",
-        "category": "Tieba"
+        "title": "在浏览器打开"
       },
       {
         "command": "tieba.openInSimpleBrowser",
-        "title": "Tieba: 在 VS Code 浏览器打开",
-        "category": "Tieba"
+        "title": "在 VS Code 浏览器打开"
       },
       {
         "command": "tieba.toggleImages",
-        "title": "Tieba: 切换图片显示",
-        "category": "Tieba"
+        "title": "切换图片显示"
       },
       {
         "command": "tieba.bossKey",
-        "title": "Tieba: 老板键",
-        "category": "Tieba"
+        "title": "老板键"
       },
       {
         "command": "tieba.openDiagnostics",
-        "title": "Tieba: 打开环境诊断",
-        "category": "Tieba"
+        "title": "打开环境诊断"
       }
     ],
     "keybindings": [
@@ -183,6 +175,11 @@
           "command": "tieba.openThreadByUrl",
           "when": "view == tieba.forums",
           "group": "secondary@1"
+        },
+        {
+          "command": "tieba.syncFollowedForums",
+          "when": "view == tieba.forums",
+          "group": "secondary@2"
         }
       ],
       "view/item/context": [
@@ -202,6 +199,10 @@
           "when": "true"
         },
         {
+          "command": "tieba.importLoginStateFromClipboard",
+          "when": "true"
+        },
+        {
           "command": "tieba.addForum",
           "when": "true"
         },
@@ -211,6 +212,10 @@
         },
         {
           "command": "tieba.openDiagnostics",
+          "when": "true"
+        },
+        {
+          "command": "tieba.syncFollowedForums",
           "when": "true"
         },
         {

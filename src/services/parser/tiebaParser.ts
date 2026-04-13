@@ -212,24 +212,27 @@ function sanitizeContent(contentNode: cheerio.Cheerio<any>): {
 }
 
 function parseCommentsPreview($: cheerio.CheerioAPI, node: cheerio.Cheerio<any>): PostItem["commentsPreview"] {
-  const items = node
-    .find(".lzl_single_post,.lzl-post,.j_lzl_single_post")
-    .toArray()
-    .map((element) => {
-      const item = $(element);
-      const authorName = normalizeText(item.find(".j_user_card,.lzl_content_reply,.lzl_author_name").first().text());
-      const content = normalizeText(item.find(".lzl_content_main,.lzl_content_reply").last().text());
-      if (!authorName || !content) {
-        return undefined;
-      }
+  const items: NonNullable<PostItem["commentsPreview"]>["items"] = [];
 
-      return {
-        authorName,
-        content
-      };
-    })
-    .filter((value): value is { authorName: string; content: string } => Boolean(value))
-    .slice(0, 3);
+  for (const element of node.find(".lzl_single_post,.lzl-post,.j_lzl_single_post").toArray()) {
+    const item = $(element);
+    const authorName = normalizeText(item.find(".j_user_card,.lzl_content_reply,.lzl_author_name").first().text());
+    const contentNode = item.find(".lzl_content_main,.lzl_content_reply").last();
+    const sanitized = sanitizeContent(contentNode);
+    if (!authorName || (!sanitized.contentHtml && !sanitized.contentText)) {
+      continue;
+    }
+
+    items.push({
+      authorName,
+      contentHtml: sanitized.contentHtml || escapeHtml(sanitized.contentText || ""),
+      contentText: sanitized.contentText
+    });
+
+    if (items.length >= 3) {
+      break;
+    }
+  }
 
   if (items.length === 0) {
     return undefined;
@@ -242,6 +245,15 @@ function parseCommentsPreview($: cheerio.CheerioAPI, node: cheerio.Cheerio<any>)
     total: totalMatch ? Number(totalMatch[0]) : items.length,
     items
   };
+}
+
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function parseThreadCard(

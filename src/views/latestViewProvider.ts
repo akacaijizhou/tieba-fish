@@ -1,9 +1,10 @@
 import * as vscode from "vscode";
 import { TiebaService } from "../services/tiebaService";
-import { CompactThreadTreeItem, EmptyTreeItem, InfoTreeItem, PaginationTreeItem } from "./treeItems";
+import { CompactThreadTreeItem, EmptyTreeItem, InfoTreeItem, LoadingTreeItem, PaginationTreeItem } from "./treeItems";
 
 export class LatestViewProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private readonly changeEmitter = new vscode.EventEmitter<void>();
+  private isLoading = false;
 
   readonly onDidChangeTreeData = this.changeEmitter.event;
 
@@ -13,20 +14,35 @@ export class LatestViewProvider implements vscode.TreeDataProvider<vscode.TreeIt
     this.changeEmitter.fire();
   }
 
+  setLoading(loading: boolean): void {
+    if (this.isLoading === loading) {
+      return;
+    }
+
+    this.isLoading = loading;
+    this.refresh();
+  }
+
   getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
     return element;
   }
 
   getChildren(): vscode.ProviderResult<vscode.TreeItem[]> {
-    const snapshot = this.service.getLatestThreads();
-    if (!snapshot) {
-      return [new EmptyTreeItem("点开一个关注吧，这里显示它的最新帖子")];
+    if (this.isLoading) {
+      return [new LoadingTreeItem("正在加载最新视图...")];
     }
 
+    const snapshot = this.service.getLatestThreads();
+    if (!snapshot) {
+      return [new EmptyTreeItem("先点开一个关注吧，这里只显示该吧最近一次加载的帖子列表")];
+    }
+
+    const pageLabel = `第 ${snapshot.page}${snapshot.pageCount ? ` / ${snapshot.pageCount}` : ""} 页`;
     const items: vscode.TreeItem[] = [
       new InfoTreeItem(
-        `${snapshot.forumName}吧`,
-        `第 ${snapshot.page}${snapshot.pageCount ? ` / ${snapshot.pageCount}` : ""} 页`
+        `当前来自 ${snapshot.forumName}吧`,
+        `最近一次加载 · ${pageLabel}`,
+        `这里只显示“${snapshot.forumName}吧”最近一次加载的帖子列表，不是全站聚合流。`
       )
     ];
 

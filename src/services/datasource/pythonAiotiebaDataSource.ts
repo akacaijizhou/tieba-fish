@@ -8,7 +8,13 @@ import { TiebaError, TiebaErrorCode } from "../errors";
 import { TiebaDataSource } from "./tiebaDataSource";
 
 interface BridgeRequest {
-  action: "healthCheck" | "getForumThreads" | "getThreadDetail" | "getPostComments" | "resolveForumNames";
+  action:
+    | "healthCheck"
+    | "getForumThreads"
+    | "getThreadDetail"
+    | "getPostComments"
+    | "resolveForumNames"
+    | "getSelfFollowForumsAll";
   auth: {
     bduss?: string;
     stoken?: string;
@@ -32,6 +38,9 @@ interface BridgeRequest {
       }
     | {
         names: string[];
+      }
+    | {
+        pageSize?: number;
       };
 }
 
@@ -56,6 +65,13 @@ export interface BridgeHealthCheckResult {
   version?: string;
   modulePath?: string;
   loadMode?: "installed" | "local";
+}
+
+export interface BridgeSelfFollowForum {
+  forumId?: string;
+  forumName: string;
+  level?: number;
+  isSigned?: boolean;
 }
 
 export class PythonAiotiebaDataSource implements TiebaDataSource {
@@ -116,6 +132,18 @@ export class PythonAiotiebaDataSource implements TiebaDataSource {
       auth: await this.getBridgeAuth(),
       payload: {}
     });
+  }
+
+  async getSelfFollowForumsAll(pageSize = 200): Promise<BridgeSelfFollowForum[]> {
+    const result = await this.callBridge<{ forums: BridgeSelfFollowForum[] }>({
+      action: "getSelfFollowForumsAll",
+      auth: await this.getBridgeAuth(),
+      payload: {
+        pageSize
+      }
+    });
+
+    return Array.isArray(result.forums) ? result.forums : [];
   }
 
   private async getBridgeAuth(): Promise<{ bduss?: string; stoken?: string }> {
