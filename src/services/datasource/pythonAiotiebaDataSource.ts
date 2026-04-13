@@ -182,7 +182,21 @@ export class PythonAiotiebaDataSource implements TiebaDataSource {
       try {
         await runSimplePythonAttempt(
           attempt.command,
-          [...attempt.argsPrefix, "-m", "pip", "install", "aiotieba", "--disable-pip-version-check"],
+          [...attempt.argsPrefix, "-m", "pip", "install", "--upgrade", "pip", "--disable-pip-version-check"],
+          240_000
+        );
+        await runSimplePythonAttempt(
+          attempt.command,
+          [
+            ...attempt.argsPrefix,
+            "-m",
+            "pip",
+            "install",
+            "--upgrade",
+            "--only-binary=:all:",
+            "aiotieba",
+            "--disable-pip-version-check"
+          ],
           240_000
         );
         return;
@@ -192,9 +206,19 @@ export class PythonAiotiebaDataSource implements TiebaDataSource {
           continue;
         }
 
-        throw error instanceof TiebaError
-          ? error
-          : new TiebaError("bridge", "安装 aiotieba 失败。", error);
+        if (error instanceof TiebaError) {
+          throw new TiebaError(
+            "bridge",
+            "安装 aiotieba 失败。请确认网络可访问 PyPI，并优先使用官方 Python 3.12/3.13。当前安装流程只接受预编译 wheel，不再走本地源码编译。",
+            error.causeValue ?? error.message
+          );
+        }
+
+        throw new TiebaError(
+          "bridge",
+          "安装 aiotieba 失败。请确认网络可访问 PyPI，并优先使用官方 Python 3.12/3.13。当前安装流程只接受预编译 wheel，不再走本地源码编译。",
+          error
+        );
       }
     }
 

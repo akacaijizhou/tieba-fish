@@ -62,8 +62,21 @@ def ensure_aiotieba_import() -> Any:
         import aiotieba as tb  # type: ignore
         silence_aiotieba_logger(tb)
         return tb
-    except ModuleNotFoundError:
-        pass
+    except ModuleNotFoundError as error:
+        missing = error.name or "unknown dependency"
+        if missing != "aiotieba":
+            raise RuntimeError(
+                "当前 Python 环境里的 aiotieba 安装不完整。"
+                f"缺少依赖：{missing}。"
+                "请重新执行 `python -m pip install --upgrade --only-binary=:all: aiotieba`。"
+            ) from error
+
+        if not should_try_local_aiotieba():
+            raise RuntimeError(
+                "当前没有安装 aiotieba。"
+                "请先在插件里执行“安装 aiotieba”，或手动运行 "
+                "`python -m pip install --upgrade --only-binary=:all: aiotieba`。"
+            ) from error
     except Exception as error:  # pragma: no cover
         raise RuntimeError(f"导入 aiotieba 失败：{error}") from error
 
@@ -76,8 +89,9 @@ def ensure_aiotieba_import() -> Any:
     except ModuleNotFoundError as error:
         missing = error.name or "unknown dependency"
         raise RuntimeError(
-            "无法导入 aiotieba。请先执行 `python -m pip install aiotieba`；"
-            "如果你要直接跑本地源码，再装好 C/C++ 构建链后执行 "
+            "开发模式下未能导入本地 aiotieba 源码。"
+            "请先执行 `python -m pip install --upgrade --only-binary=:all: aiotieba`；"
+            "如果你明确要直接跑本地源码，再装好 C/C++ 构建链后执行 "
             "`python -m pip install -e .\\aiotieba-master`。"
             f"当前缺少依赖：{missing}。"
         ) from error
@@ -96,6 +110,10 @@ def silence_aiotieba_logger(tb: Any) -> None:
         tb.logging.set_logger(logger)
     except Exception:
         pass
+
+
+def should_try_local_aiotieba() -> bool:
+    return (ROOT / ".git").exists() and LOCAL_AIOTIEBA_PATH.exists()
 
 
 def normalize_title(title: str, fallback_text: str, thread_id: int | str) -> str:

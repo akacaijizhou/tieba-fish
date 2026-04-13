@@ -177,6 +177,25 @@ Ctrl+Alt+X
 - `安装 aiotieba`
 - `打开环境诊断`
 
+### 安装 aiotieba 时提示缺少 `cryptography` 或跳到 `cmake` 编译，怎么办？
+
+这通常不是贴吧接口问题，而是 Python 依赖没装完整，或者误走了本地源码编译路径。
+
+普通用户不要执行：
+
+```powershell
+python -m pip install -e .\aiotieba-master
+```
+
+正确做法是直接安装 PyPI 上的预编译包：
+
+```powershell
+python -m pip install --upgrade pip
+python -m pip install --upgrade --only-binary=:all: aiotieba
+```
+
+如果你是插件用户而不是开发者，看到 `aiotieba-master` 相关提示时，可以直接忽略本地源码那条说明。
+
 ### 为什么有时还是会打开浏览器？
 
 因为贴吧网页和部分接口存在安全校验。当前产品策略不是强绕过，而是：
