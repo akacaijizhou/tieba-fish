@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
-import { ForumSubscription, OpenTarget, ThreadSummary } from "./models/tieba";
+import { ForumSubscription, OpenTarget, ThreadSummary, TiebaThemePreset } from "./models/tieba";
 import { TiebaError } from "./services/errors";
-import { ForumNameSuggestion, TiebaService, TiebaStatusSnapshot } from "./services/tiebaService";
+import { ForumNameSuggestion, TiebaService } from "./services/tiebaService";
+import { getTiebaHumanStatus } from "./statusPresentation";
 import { STORAGE_KEYS } from "./storage/storageKeys";
 import { BossFilesProvider } from "./views/bossFilesProvider";
 import { BossModeManager } from "./views/bossModeManager";
@@ -11,6 +12,7 @@ import { ForumPanelManager } from "./views/forumPanel";
 import { HistoryViewProvider } from "./views/historyViewProvider";
 import { LatestViewProvider } from "./views/latestViewProvider";
 import { OnboardingPanel } from "./views/onboardingPanel";
+import { ShortcutHelpPanel } from "./views/shortcutHelpPanel";
 import { ThreadPanelManager } from "./views/threadPanel";
 
 interface LoadableTreeProvider {
@@ -33,24 +35,32 @@ export function activate(context: vscode.ExtensionContext): void {
   const bossMode = new BossModeManager(context, forumPanels, threadPanels);
   const diagnosticsPanel = new DiagnosticsPanel(context, service);
   const onboardingPanel = new OnboardingPanel(context, service);
+  const shortcutHelpPanel = new ShortcutHelpPanel(context);
   const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10);
+  const themePresetStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 9);
   const resetOnboardingStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 9);
   statusBarItem.command = "tieba.openDiagnostics";
   statusBarItem.name = "Tieba 状态";
+  themePresetStatusBarItem.command = "tieba.selectThemePreset";
+  themePresetStatusBarItem.name = "Tieba 主题";
   statusBarItem.show();
+  themePresetStatusBarItem.show();
   resetOnboardingStatusBarItem.command = "tieba.resetOnboardingAndReload";
   resetOnboardingStatusBarItem.name = "Tieba 重置引导";
   resetOnboardingStatusBarItem.text = "$(debug-restart) 重置引导";
   resetOnboardingStatusBarItem.tooltip = "清空本地登录态、缓存和引导状态，并重载当前窗口";
   resetOnboardingStatusBarItem.show();
-  context.subscriptions.push(statusBarItem, resetOnboardingStatusBarItem);
+  context.subscriptions.push(statusBarItem, themePresetStatusBarItem, resetOnboardingStatusBarItem);
 
   void vscode.commands.executeCommand("setContext", "tieba.bossModeEnabled", false);
 
   const refreshStatusBar = async (): Promise<void> => {
-    const snapshot = await service.getStatusSnapshot();
-    statusBarItem.text = buildTiebaStatusBarText(snapshot);
-    statusBarItem.tooltip = buildTiebaStatusBarTooltip(snapshot);
+    const report = await service.getDiagnosticsReport();
+    statusBarItem.text = buildTiebaStatusBarText(report);
+    statusBarItem.tooltip = buildTiebaStatusBarTooltip(report);
+    const themePreset = service.getSettings().themePreset;
+    themePresetStatusBarItem.text = `$(symbol-color) ${getThemePresetLabel(themePreset)}`;
+    themePresetStatusBarItem.tooltip = `当前主题：${getThemePresetLabel(themePreset)}\n点击切换阅读主题。`;
   };
 
   const openOnboarding = async (preserveFocus = false): Promise<void> => {
@@ -153,6 +163,7 @@ export function activate(context: vscode.ExtensionContext): void {
         followedForumsProvider.refresh();
         latestViewProvider.refresh();
         historyViewProvider.refresh();
+        forumPanels.broadcastSettings();
         threadPanels.broadcastSettings();
         void refreshStatusBar();
       }
@@ -225,23 +236,6 @@ export function activate(context: vscode.ExtensionContext): void {
       const imported = parseImportedLoginState(primaryInput);
       if (!imported) {
         void vscode.window.showErrorMessage("没有识别到 BDUSS。建议直接粘贴从浏览器复制的完整贴吧 Cookie。");
-        return;
-      }
-
-      await service.saveImportedLoginState(imported);
-      void vscode.window.showInformationMessage(buildImportedLoginStateMessage(imported));
-    }),
-
-    vscode.commands.registerCommand("tieba.importLoginStateFromClipboard", async () => {
-      const clipboardText = (await vscode.env.clipboard.readText()).trim();
-      if (!clipboardText) {
-        void vscode.window.showErrorMessage("剪贴板是空的。先在浏览器里复制贴吧 Cookie。");
-        return;
-      }
-
-      const imported = parseImportedLoginState(clipboardText);
-      if (!imported) {
-        void vscode.window.showErrorMessage("剪贴板里没有识别到贴吧登录态。建议先复制完整贴吧 Cookie。");
         return;
       }
 
@@ -432,6 +426,47 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("tieba.openOnboarding", async () => {
       await openOnboarding(false);
+    }),
+
+    vscode.commands.registerCommand("tieba.selectThemePreset", async () => {
+      const current = service.getSettings().themePreset;
+      const picked = await vscode.window.showQuickPick(
+        [
+          {
+            label: "默认",
+            description: "保持当前这套样式",
+            themePreset: "default" as TiebaThemePreset
+          },
+          {
+            label: "极简",
+            description: "更紧凑、更弱化的阅读样式",
+            themePreset: "minimal" as TiebaThemePreset
+          },
+          {
+            label: "文档风",
+            description: "更像文档阅读，正文更平和",
+            themePreset: "document" as TiebaThemePreset
+          }
+        ],
+        {
+          title: "选择阅读主题",
+          placeHolder: `当前：${getThemePresetLabel(current)}`
+        }
+      );
+
+      if (!picked || picked.themePreset === current) {
+        return;
+      }
+
+      await service.updateThemePreset(picked.themePreset);
+      forumPanels.broadcastSettings();
+      threadPanels.broadcastSettings();
+      void refreshStatusBar();
+      void vscode.window.showInformationMessage(`阅读主题已切换为“${getThemePresetLabel(picked.themePreset)}”。`);
+    }),
+
+    vscode.commands.registerCommand("tieba.openShortcutHelp", async () => {
+      await shortcutHelpPanel.open();
     }),
 
     vscode.commands.registerCommand("tieba.installAiotieba", async () => {
@@ -740,39 +775,51 @@ function createTreeViewLoadingController(
   };
 }
 
-function buildTiebaStatusBarText(snapshot: TiebaStatusSnapshot): string {
-  const authLabel = snapshot.hasBduss ? "已登录" : "匿名";
-  const sourceLabel =
-    snapshot.lastResolvedSource === "aiotieba"
-      ? "aiotieba"
-      : snapshot.lastResolvedSource === "web"
-        ? "网页回退"
-        : "未诊断";
+function buildTiebaStatusBarText(report: Awaited<ReturnType<TiebaService["getDiagnosticsReport"]>>): string {
+  const human = getTiebaHumanStatus(report);
   const icon =
-    snapshot.lastResolvedSource === "aiotieba"
-      ? "$(check)"
-      : snapshot.lastResolvedSource === "web"
-        ? "$(warning)"
-        : "$(circle-outline)";
+    !report.bridge.pythonAvailable || !report.bridge.available
+      ? "$(warning)"
+      : report.hasBduss && report.hasStoken && report.lastResolvedSource === "aiotieba"
+        ? "$(check)"
+        : report.hasBduss
+          ? "$(warning)"
+          : "$(circle-outline)";
+  const suffix =
+    human.syncLabel === "可以同步"
+      ? "可同步"
+      : human.readingLabel === "可直接阅读"
+        ? "需补全登录态"
+        : human.readingLabel;
 
-  return `${icon} Tieba ${authLabel} · ${sourceLabel}`;
+  return `${icon} Tieba ${human.readingLabel} · ${suffix}`;
 }
 
-function buildTiebaStatusBarTooltip(snapshot: TiebaStatusSnapshot): vscode.MarkdownString {
+function buildTiebaStatusBarTooltip(report: Awaited<ReturnType<TiebaService["getDiagnosticsReport"]>>): vscode.MarkdownString {
+  const human = getTiebaHumanStatus(report);
   const markdown = new vscode.MarkdownString(undefined, true);
   markdown.isTrusted = true;
   markdown.appendMarkdown("**Tieba 当前状态**\n\n");
-  markdown.appendMarkdown(`- 账号：${snapshot.hasBduss ? "已配置 BDUSS" : "未配置 BDUSS"}\n`);
-  markdown.appendMarkdown(`- STOKEN：${snapshot.hasStoken ? "已配置" : "未配置"}\n`);
-  markdown.appendMarkdown(`- Cookie：${snapshot.hasCookie ? "已配置" : "未配置"}\n`);
-  markdown.appendMarkdown(
-    `- 当前数据源：${snapshot.lastResolvedSource === "aiotieba" ? "aiotieba" : snapshot.lastResolvedSource === "web" ? "网页回退" : "尚未产生读取记录"}\n`
-  );
-  if (snapshot.lastFailure) {
-    markdown.appendMarkdown(`- 最近失败：${snapshot.lastFailure.message}\n`);
+  markdown.appendMarkdown(`- 阅读：${human.readingLabel}\n`);
+  markdown.appendMarkdown(`- 同步关注吧：${human.syncLabel}\n`);
+  markdown.appendMarkdown(`- 当前链路：${human.sourceLabel}\n`);
+  markdown.appendMarkdown(`- 登录态：${human.loginLabel}\n`);
+  if (report.lastFailure) {
+    markdown.appendMarkdown(`- 最近失败：${report.lastFailure.message}\n`);
   }
   markdown.appendMarkdown("\n点击打开环境诊断。");
   return markdown;
+}
+
+function getThemePresetLabel(themePreset: TiebaThemePreset): string {
+  switch (themePreset) {
+    case "minimal":
+      return "主题: 极简";
+    case "document":
+      return "主题: 文档风";
+    default:
+      return "主题: 默认";
+  }
 }
 
 function shouldAutoOpenOnboarding(service: TiebaService, diagnostics: Awaited<ReturnType<TiebaService["getDiagnosticsReport"]>>): boolean {

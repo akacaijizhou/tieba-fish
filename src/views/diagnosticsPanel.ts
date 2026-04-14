@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { TiebaDiagnosticsReport, TiebaService } from "../services/tiebaService";
+import { getTiebaHumanStatus } from "../statusPresentation";
 
 export class DiagnosticsPanel {
   private panel?: vscode.WebviewPanel;
@@ -50,6 +51,7 @@ export class DiagnosticsPanel {
 
   private getHtml(webview: vscode.Webview, report: TiebaDiagnosticsReport): string {
     const csp = `default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline';`;
+    const human = getTiebaHumanStatus(report);
     return `<!DOCTYPE html>
 <html lang="zh-CN">
   <head>
@@ -112,19 +114,22 @@ export class DiagnosticsPanel {
     <h1>Tieba 环境诊断</h1>
     <p class="subtle">这页只回答两件事：现在能不能稳定看，以及当前到底走的是哪条数据链路。</p>
 
-    <h2>账号状态</h2>
+    <h2>结果状态</h2>
+    <div class="grid">
+      ${this.renderCard("阅读", human.readingLabel, human.readingDescription)}
+      ${this.renderCard("同步关注吧", human.syncLabel, human.syncDescription)}
+      ${this.renderCard("当前链路", human.sourceLabel, human.sourceDescription)}
+      ${this.renderCard("登录态", human.loginLabel, human.loginDescription)}
+    </div>
+
+    <h2>技术细节</h2>
     <div class="grid">
       ${this.renderCard("BDUSS", report.hasBduss ? "已配置" : "未配置")}
       ${this.renderCard("STOKEN", report.hasStoken ? "已配置" : "未配置")}
       ${this.renderCard("Cookie", report.hasCookie ? "已配置" : "未配置")}
-      ${this.renderCard("最近成功数据源", report.lastResolvedSource === "aiotieba" ? "aiotieba" : report.lastResolvedSource === "web" ? "网页回退" : "还没有记录")}
-    </div>
-
-    <h2>Bridge 状态</h2>
-    <div class="grid">
-      ${this.renderCard("aiotieba bridge", report.bridge.available ? "可用" : "不可用")}
       ${this.renderCard("Python 命令", report.bridge.pythonPath)}
       ${this.renderCard("Python 运行时", report.bridge.pythonAvailable ? `可用${report.bridge.pythonVersion ? ` · ${report.bridge.pythonVersion}` : ""}` : "不可用")}
+      ${this.renderCard("aiotieba", report.bridge.available ? "已安装" : "未安装")}
       ${this.renderCard("导入方式", report.bridge.loadMode === "local" ? "项目内 aiotieba-master" : report.bridge.loadMode === "installed" ? "已安装 Python 包" : "未知")}
       ${this.renderCard("aiotieba 版本", report.bridge.version || "未知")}
     </div>
@@ -167,8 +172,8 @@ export class DiagnosticsPanel {
 </html>`;
   }
 
-  private renderCard(label: string, value: string): string {
-    return `<section class="card"><span class="label">${this.escapeHtml(label)}</span><span class="value">${value}</span></section>`;
+  private renderCard(label: string, value: string, description?: string): string {
+    return `<section class="card"><span class="label">${this.escapeHtml(label)}</span><span class="value">${value}</span>${description ? `<div>${this.escapeHtml(description)}</div>` : ""}</section>`;
   }
 
   private renderSuggestionList(report: TiebaDiagnosticsReport): string {
@@ -184,13 +189,15 @@ export class DiagnosticsPanel {
       }
     }
     if (!report.hasBduss) {
-      items.push("在命令面板执行 `导入贴吧登录态`。");
+      items.push("先执行“导入贴吧登录态”，优先直接粘贴完整贴吧 Cookie。");
+    } else if (!report.hasStoken) {
+      items.push("如果你要同步关注吧，需要重新导入一次包含 STOKEN 的完整 Cookie。");
     }
     if (!report.hasCookie) {
-      items.push("如需网页回退更稳，可额外配置 `配置贴吧 Cookie`。");
+      items.push("如果你担心网页回退不稳，可以额外导入完整 Cookie。");
     }
     if (items.length === 0) {
-      items.push("当前主路径条件已经满足，可以直接以结构化阅读模式继续用。");
+      items.push("当前已经可以直接阅读；如果左侧没有内容，就去同步关注吧或手动添加贴吧。");
     }
 
     return items.map((item) => `<li>${this.escapeHtml(item)}</li>`).join("");

@@ -9,7 +9,11 @@
     pageCount: undefined,
     threads: [],
     loading: true,
-    error: null
+    loadingMessage: "正在打开贴吧...",
+    error: null,
+    settings: {
+      themePreset: "default"
+    }
   };
 
   function send(type, payload) {
@@ -25,6 +29,10 @@
       .replace(/'/g, "&#39;");
   }
 
+  function applyBodySettings() {
+    document.body.dataset.themePreset = state.settings.themePreset || "default";
+  }
+
   function renderBadges(thread) {
     const badges = [];
     if (thread.isTop) {
@@ -34,6 +42,19 @@
       badges.push('<span class="tag">精华</span>');
     }
     return badges.join("");
+  }
+
+  function renderFeedback(kind, message) {
+    if (!message) {
+      return "";
+    }
+
+    return `
+      <div class="feedback-strip ${kind === "error" ? "is-error" : "is-loading"}">
+        ${kind === "loading" ? '<span class="loading-spinner" aria-hidden="true"></span>' : ""}
+        <span>${escapeHtml(message)}</span>
+      </div>
+    `;
   }
 
   function renderThreadRow(thread) {
@@ -56,15 +77,28 @@
   }
 
   function renderLoaded() {
+    const feedback = state.loading
+      ? renderFeedback("loading", state.loadingMessage || "正在加载帖子列表...")
+      : state.error
+        ? renderFeedback("error", state.error.message)
+        : "";
+
     return `
       <section class="list-shell">
+        ${feedback}
         <div class="simple-list">
-          ${state.threads.map(renderThreadRow).join("")}
+          ${state.threads.length === 0
+            ? `<section class="state">${
+                state.page > 1
+                  ? "这一页没有帖子，可以翻到别的页，或者回到上一页。"
+                  : "这个吧当前没有拿到帖子列表，可以先刷新一次；如果还不行，再试浏览器回退。"
+              }</section>`
+            : state.threads.map(renderThreadRow).join("")}
         </div>
         <div class="footer-nav">
-          <button class="button" data-action="prev"${state.page <= 1 ? " disabled" : ""}>上一页</button>
+          <button class="button" data-action="prev"${state.page <= 1 || state.loading ? " disabled" : ""}>上一页</button>
           <div class="hint">点击帖子标题进入阅读页</div>
-          <button class="button" data-action="next"${state.pageCount && state.page >= state.pageCount ? " disabled" : ""}>下一页</button>
+          <button class="button" data-action="next"${state.loading || (state.pageCount && state.page >= state.pageCount) ? " disabled" : ""}>下一页</button>
         </div>
       </section>
     `;
@@ -85,9 +119,10 @@
   }
 
   function render() {
-    const content = state.loading
-      ? '<section class="state">正在加载帖子列表…</section>'
-      : state.error
+    applyBodySettings();
+    const content = state.loading && state.threads.length === 0
+      ? `<section class="state">${renderFeedback("loading", state.loadingMessage || "正在加载帖子列表...")}</section>`
+      : state.error && state.threads.length === 0
         ? renderError()
         : renderLoaded();
 
@@ -100,7 +135,7 @@
               <div class="page-meta">第 ${escapeHtml(state.page)} 页${state.pageCount ? ` / ${escapeHtml(state.pageCount)}` : ""} · ${escapeHtml(state.threads.length)} 条</div>
             </div>
             <div class="toolbar">
-              <button class="button" data-action="refresh">刷新</button>
+              <button class="button" data-action="refresh"${state.loading ? " disabled" : ""}>刷新</button>
               <button class="button" data-action="browser">VS Code 浏览器</button>
               <button class="button" data-action="external">系统浏览器</button>
             </div>
@@ -144,7 +179,12 @@
   window.addEventListener("message", (event) => {
     const { type, payload } = event.data || {};
     if (type === "setLoading") {
-      state = { ...state, loading: true, error: null, page: payload.page };
+      state = {
+        ...state,
+        loading: true,
+        loadingMessage: payload.message || "正在加载帖子列表...",
+        error: null
+      };
       render();
       return;
     }
@@ -152,11 +192,13 @@
       state = {
         ...state,
         loading: false,
+        loadingMessage: "",
         error: null,
         forumName: payload.forumName,
         page: payload.page,
         pageCount: payload.pageCount,
-        threads: payload.threads
+        threads: payload.threads,
+        settings: payload.settings || state.settings
       };
       render();
       return;
@@ -165,9 +207,21 @@
       state = {
         ...state,
         loading: false,
+        loadingMessage: "",
         error: payload,
         forumName: payload.forumName,
-        page: payload.page
+        settings: payload.settings || state.settings
+      };
+      render();
+      return;
+    }
+    if (type === "settingsChanged") {
+      state = {
+        ...state,
+        settings: {
+          ...state.settings,
+          ...payload
+        }
       };
       render();
     }

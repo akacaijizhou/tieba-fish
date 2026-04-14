@@ -2,7 +2,7 @@
   "name": "tieba-fish",
   "displayName": "Tieba Fish",
   "description": "在 VS Code 里低打扰地看百度贴吧。",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "akacjz",
   "license": "UNLICENSED",
   "repository": {
@@ -35,13 +35,14 @@
     "onCommand:tieba.addForum",
     "onCommand:tieba.syncFollowedForums",
     "onCommand:tieba.configureAccount",
-    "onCommand:tieba.importLoginStateFromClipboard",
     "onCommand:tieba.clearAccount",
     "onCommand:tieba.configureCookie",
     "onCommand:tieba.clearCookie",
     "onCommand:tieba.bossKey",
     "onCommand:tieba.openDiagnostics",
     "onCommand:tieba.openOnboarding",
+    "onCommand:tieba.selectThemePreset",
+    "onCommand:tieba.openShortcutHelp",
     "onCommand:tieba.installAiotieba",
     "onCommand:tieba.openPythonDownload",
     "onCommand:tieba.resetOnboardingAndReload",
@@ -87,7 +88,8 @@
     "commands": [
       {
         "command": "tieba.addForum",
-        "title": "添加贴吧"
+        "title": "添加贴吧",
+        "category": "开始使用"
       },
       {
         "command": "tieba.refreshAll",
@@ -95,7 +97,8 @@
       },
       {
         "command": "tieba.syncFollowedForums",
-        "title": "同步我关注的贴吧"
+        "title": "同步关注吧",
+        "category": "开始使用"
       },
       {
         "command": "tieba.refreshLatest",
@@ -111,23 +114,23 @@
       },
       {
         "command": "tieba.configureAccount",
-        "title": "导入贴吧登录态"
-      },
-      {
-        "command": "tieba.importLoginStateFromClipboard",
-        "title": "从剪贴板导入贴吧登录态"
+        "title": "导入登录态",
+        "category": "开始使用"
       },
       {
         "command": "tieba.clearAccount",
-        "title": "清除贴吧登录态"
+        "title": "清除登录态",
+        "category": "维护"
       },
       {
         "command": "tieba.configureCookie",
-        "title": "配置贴吧 Cookie"
+        "title": "配置 Cookie",
+        "category": "维护"
       },
       {
         "command": "tieba.clearCookie",
-        "title": "清除贴吧 Cookie"
+        "title": "清除 Cookie",
+        "category": "维护"
       },
       {
         "command": "tieba.openForum",
@@ -143,11 +146,13 @@
       },
       {
         "command": "tieba.openThreadByUrl",
-        "title": "浏览指定链接"
+        "title": "浏览指定链接",
+        "category": "阅读"
       },
       {
         "command": "tieba.continueReading",
-        "title": "继续阅读"
+        "title": "继续阅读",
+        "category": "阅读"
       },
       {
         "command": "tieba.openExternal",
@@ -159,31 +164,48 @@
       },
       {
         "command": "tieba.toggleImages",
-        "title": "切换图片显示"
+        "title": "切换图片显示",
+        "category": "阅读"
       },
       {
         "command": "tieba.bossKey",
-        "title": "老板键"
+        "title": "老板键",
+        "category": "阅读"
       },
       {
         "command": "tieba.openDiagnostics",
-        "title": "打开环境诊断"
+        "title": "环境诊断",
+        "category": "维护"
       },
       {
         "command": "tieba.openOnboarding",
-        "title": "打开首次引导"
+        "title": "打开首页",
+        "category": "开始使用"
+      },
+      {
+        "command": "tieba.openShortcutHelp",
+        "title": "快捷键帮助",
+        "category": "阅读"
+      },
+      {
+        "command": "tieba.selectThemePreset",
+        "title": "切换主题预设",
+        "category": "阅读"
       },
       {
         "command": "tieba.installAiotieba",
-        "title": "安装 aiotieba"
+        "title": "安装 aiotieba",
+        "category": "开始使用"
       },
       {
         "command": "tieba.openPythonDownload",
-        "title": "下载 Python"
+        "title": "下载 Python",
+        "category": "开始使用"
       },
       {
         "command": "tieba.resetOnboardingAndReload",
-        "title": "重置首次引导并重载"
+        "title": "重置引导并重载",
+        "category": "维护"
       }
     ],
     "keybindings": [
@@ -236,15 +258,11 @@
       ],
       "commandPalette": [
         {
+          "command": "tieba.openOnboarding",
+          "when": "true"
+        },
+        {
           "command": "tieba.configureAccount",
-          "when": "true"
-        },
-        {
-          "command": "tieba.clearAccount",
-          "when": "true"
-        },
-        {
-          "command": "tieba.importLoginStateFromClipboard",
           "when": "true"
         },
         {
@@ -252,19 +270,7 @@
           "when": "true"
         },
         {
-          "command": "tieba.openThreadByUrl",
-          "when": "true"
-        },
-        {
-          "command": "tieba.continueReading",
-          "when": "true"
-        },
-        {
-          "command": "tieba.openDiagnostics",
-          "when": "true"
-        },
-        {
-          "command": "tieba.openOnboarding",
+          "command": "tieba.syncFollowedForums",
           "when": "true"
         },
         {
@@ -276,11 +282,35 @@
           "when": "true"
         },
         {
-          "command": "tieba.resetOnboardingAndReload",
+          "command": "tieba.openThreadByUrl",
           "when": "true"
         },
         {
-          "command": "tieba.syncFollowedForums",
+          "command": "tieba.continueReading",
+          "when": "true"
+        },
+        {
+          "command": "tieba.openShortcutHelp",
+          "when": "true"
+        },
+        {
+          "command": "tieba.selectThemePreset",
+          "when": "true"
+        },
+        {
+          "command": "tieba.bossKey",
+          "when": "true"
+        },
+        {
+          "command": "tieba.toggleImages",
+          "when": "true"
+        },
+        {
+          "command": "tieba.openDiagnostics",
+          "when": "true"
+        },
+        {
+          "command": "tieba.clearAccount",
           "when": "true"
         },
         {
@@ -292,11 +322,7 @@
           "when": "true"
         },
         {
-          "command": "tieba.bossKey",
-          "when": "true"
-        },
-        {
-          "command": "tieba.toggleImages",
+          "command": "tieba.resetOnboardingAndReload",
           "when": "true"
         }
       ]
@@ -318,6 +344,16 @@
           "type": "boolean",
           "default": true,
           "description": "是否降低阅读页的视觉存在感。"
+        },
+        "tieba.themePreset": {
+          "type": "string",
+          "enum": [
+            "default",
+            "minimal",
+            "document"
+          ],
+          "default": "default",
+          "description": "阅读主题预设。default 为当前默认样式，minimal 为极简，document 为文档风。"
         },
         "tieba.cacheMinutes": {
           "type": "number",

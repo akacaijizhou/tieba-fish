@@ -178,6 +178,12 @@ export class TiebaService {
     return this.getSettings();
   }
 
+  async updateThemePreset(nextValue: TiebaSettings["themePreset"]): Promise<TiebaSettings> {
+    await this.settingsStore.updateThemePreset(nextValue);
+    this.changeEmitter.fire();
+    return this.getSettings();
+  }
+
   async addForum(forumName: string): Promise<ForumSubscription> {
     const forum = await this.forumsStore.add(forumName);
     this.changeEmitter.fire();

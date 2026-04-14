@@ -8,6 +8,20 @@
   --accent: var(--vscode-textLink-foreground);
   --reply-text: color-mix(in srgb, var(--text) 76%, var(--accent) 24%);
   --reply-accent: #526fff;
+  --content-max-width: 920px;
+  --page-padding-top: 12px;
+  --page-padding-side: 16px;
+  --page-padding-bottom: 24px;
+  --panel-gap: 12px;
+  --page-head-gap: 8px;
+  --page-head-padding-bottom: 10px;
+  --row-padding: 10px;
+  --content-font-size: 13px;
+  --content-line-height: 1.75;
+  --title-font-size: 18px;
+  --image-thumb-size: 72px;
+  --toolbar-button-padding-y: 3px;
+  --toolbar-button-padding-x: 8px;
 }
 
 * {
@@ -22,20 +36,20 @@ body {
 }
 
 #app {
-  max-width: 920px;
+  max-width: var(--content-max-width);
   margin: 0 auto;
-  padding: 12px 16px 24px;
+  padding: var(--page-padding-top) var(--page-padding-side) var(--page-padding-bottom);
 }
 
 .panel {
   display: grid;
-  gap: 12px;
+  gap: var(--panel-gap);
 }
 
 .page-head {
   display: grid;
-  gap: 8px;
-  padding-bottom: 10px;
+  gap: var(--page-head-gap);
+  padding-bottom: var(--page-head-padding-bottom);
   border-bottom: 1px solid var(--line);
 }
 
@@ -49,7 +63,7 @@ body {
 
 .page-title {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--title-font-size);
   line-height: 1.4;
   font-weight: 600;
 }
@@ -83,7 +97,7 @@ body {
   background: var(--surface);
   color: var(--text);
   border-radius: 6px;
-  padding: 3px 8px;
+  padding: var(--toolbar-button-padding-y) var(--toolbar-button-padding-x);
   min-height: 26px;
   font: inherit;
   cursor: pointer;
@@ -110,7 +124,7 @@ body {
 
 .thread-row,
 .post-row {
-  padding: 10px 0;
+  padding: var(--row-padding) 0;
   border-bottom: 1px solid var(--line);
 }
 
@@ -167,8 +181,8 @@ body {
 
 .post-content {
   margin-top: 6px;
-  font-size: 13px;
-  line-height: 1.75;
+  font-size: var(--content-font-size);
+  line-height: var(--content-line-height);
   word-break: break-word;
 }
 
@@ -186,8 +200,8 @@ body {
 }
 
 .post-content img:not(.tieba-emoji) {
-  width: 72px;
-  height: 72px;
+  width: var(--image-thumb-size);
+  height: var(--image-thumb-size);
   object-fit: cover;
   display: inline-block;
   vertical-align: top;
@@ -329,6 +343,45 @@ body.hide-images .post-content img:not(.tieba-emoji) {
   padding: 10px 0;
 }
 
+.feedback-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.feedback-strip.is-loading {
+  color: var(--muted);
+}
+
+.feedback-strip.is-error {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--vscode-errorForeground, #f14c4c) 35%, var(--line));
+  background: color-mix(in srgb, var(--bg) 94%, var(--vscode-errorForeground, #f14c4c) 6%);
+}
+
+.feedback-strip.is-compact {
+  margin-top: 6px;
+  margin-bottom: 0;
+  padding: 6px 8px;
+}
+
+.loading-spinner {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-top-color: var(--accent);
+  animation: tieba-spin 0.85s linear infinite;
+}
+
 .notice-title {
   font-weight: 600;
   margin-bottom: 4px;
@@ -402,6 +455,80 @@ body.hide-images .post-content img:not(.tieba-emoji) {
   padding: 20px;
 }
 
+.shortcut-help {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.shortcut-help-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.38);
+}
+
+.shortcut-help-dialog {
+  position: relative;
+  z-index: 1;
+  width: min(760px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg) 96%, var(--surface) 4%);
+  box-shadow: 0 18px 54px color-mix(in srgb, black 18%, transparent);
+}
+
+.shortcut-help-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.shortcut-help-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.shortcut-help-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.shortcut-help-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.shortcut-item {
+  display: grid;
+  gap: 6px;
+}
+
+.shortcut-key {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 84%, var(--accent) 16%);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .lightbox-backdrop {
   position: absolute;
   inset: 0;
@@ -436,13 +563,65 @@ body.hide-images .post-content img:not(.tieba-emoji) {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
 }
 
+body[data-theme-preset="minimal"] {
+  --muted: color-mix(in srgb, var(--text) 55%, transparent);
+  --line: color-mix(in srgb, var(--text) 10%, transparent);
+  --surface: color-mix(in srgb, var(--bg) 98%, white 2%);
+  --surface-2: color-mix(in srgb, var(--bg) 95%, white 5%);
+  --content-max-width: 860px;
+  --page-padding-top: 10px;
+  --page-padding-side: 14px;
+  --page-padding-bottom: 18px;
+  --panel-gap: 10px;
+  --page-head-gap: 6px;
+  --page-head-padding-bottom: 8px;
+  --row-padding: 8px;
+  --content-font-size: 12px;
+  --content-line-height: 1.68;
+  --title-font-size: 17px;
+  --image-thumb-size: 60px;
+  --toolbar-button-padding-y: 2px;
+  --toolbar-button-padding-x: 7px;
+}
+
+body[data-theme-preset="document"] {
+  --line: color-mix(in srgb, var(--text) 11%, transparent);
+  --surface: color-mix(in srgb, var(--bg) 97%, #f6f0e4 3%);
+  --surface-2: color-mix(in srgb, var(--bg) 94%, #f6f0e4 6%);
+  --content-max-width: 880px;
+  --page-padding-top: 16px;
+  --page-padding-side: 18px;
+  --page-padding-bottom: 28px;
+  --panel-gap: 14px;
+  --page-head-gap: 10px;
+  --page-head-padding-bottom: 12px;
+  --row-padding: 12px;
+  --content-font-size: 14px;
+  --content-line-height: 1.9;
+  --title-font-size: 19px;
+  --image-thumb-size: 68px;
+}
+
+body[data-theme-preset="document"] .post-content,
+body[data-theme-preset="document"] .thread-summary,
+body[data-theme-preset="document"] .comment-content {
+  font-family: "Georgia", "Noto Serif SC", "Source Han Serif SC", serif;
+}
+
+@keyframes tieba-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 720px) {
   #app {
     padding: 10px 12px 18px;
   }
 
   .footer-nav,
-  .comment-summary-head {
+  .comment-summary-head,
+  .shortcut-help-head {
     align-items: flex-start;
     flex-direction: column;
   }

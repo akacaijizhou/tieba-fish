@@ -50,7 +50,7 @@ export class ThreadPanelManager {
         }
       });
       if (previousPage !== page || previousOnlyLz !== onlyLz) {
-        await this.loadThread(existing, { thread, page, onlyLz }, false);
+        await this.loadThread(existing, { thread, page, onlyLz }, false, `正在加载第 ${page} 页...`);
       }
       return;
     }
@@ -79,7 +79,7 @@ export class ThreadPanelManager {
     panel.webview.onDidReceiveMessage(async (message) => {
       switch (message.type) {
         case "ready":
-          await this.loadThread(panel, { thread, page, onlyLz }, false);
+          await this.loadThread(panel, { thread, page, onlyLz }, false, "正在打开帖子...");
           break;
         case "refreshThread":
           await this.loadThread(
@@ -89,7 +89,8 @@ export class ThreadPanelManager {
               page: Math.max(1, Number(message.payload?.page ?? 1) || 1),
               onlyLz: Boolean(message.payload?.onlyLz)
             },
-            true
+            true,
+            "正在刷新帖子..."
           );
           break;
         case "loadThreadPage":
@@ -97,14 +98,14 @@ export class ThreadPanelManager {
             thread,
             page: Math.max(1, Number(message.payload?.page ?? 1) || 1),
             onlyLz: Boolean(message.payload?.onlyLz)
-          }, false);
+          }, false, `正在加载第 ${Math.max(1, Number(message.payload?.page ?? 1) || 1)} 页...`);
           break;
         case "toggleOnlyLz":
           await this.loadThread(panel, {
             thread,
             page: Math.max(1, Number(message.payload?.page ?? 1) || 1),
             onlyLz: Boolean(message.payload?.onlyLz)
-          }, false);
+          }, false, Boolean(message.payload?.onlyLz) ? "正在切换到只看楼主..." : "正在切回全部楼层...");
           break;
         case "toggleImages":
           {
@@ -140,7 +141,8 @@ export class ThreadPanelManager {
               type: "postCommentsLoading",
               payload: {
                 postId,
-                page
+                page,
+                message: page > 1 ? `正在加载第 ${page} 页回复...` : "正在加载回复..."
               }
             });
 
@@ -217,12 +219,14 @@ export class ThreadPanelManager {
   private async loadThread(
     panel: vscode.WebviewPanel,
     state: ThreadPanelState,
-    forceRefresh: boolean
+    forceRefresh: boolean,
+    loadingMessage: string
   ): Promise<void> {
     panel.webview.postMessage({
       type: "setLoading",
       payload: {
-        page: state.page
+        page: state.page,
+        message: loadingMessage
       }
     });
 

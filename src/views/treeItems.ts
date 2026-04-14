@@ -76,8 +76,10 @@ export class InfoTreeItem extends vscode.TreeItem {
 }
 
 export class ActionTreeItem extends vscode.TreeItem {
-  constructor(label: string, commandId: string, args?: unknown[], icon = "arrow-right") {
+  constructor(label: string, commandId: string, args?: unknown[], icon = "arrow-right", description?: string) {
     super(label, vscode.TreeItemCollapsibleState.None);
+    this.description = description;
+    this.tooltip = description ? new vscode.MarkdownString(`**${label}**\n\n${description}`) : undefined;
     this.contextValue = "tieba.action";
     this.iconPath = new vscode.ThemeIcon(icon);
     this.command = {
@@ -105,8 +107,10 @@ export class ContinueReadingTreeItem extends vscode.TreeItem {
 }
 
 export class EmptyTreeItem extends vscode.TreeItem {
-  constructor(label: string, commandId?: string) {
+  constructor(label: string, commandId?: string, description?: string) {
     super(label, vscode.TreeItemCollapsibleState.None);
+    this.description = description;
+    this.tooltip = description ? new vscode.MarkdownString(`**${label}**\n\n${description}`) : undefined;
     this.contextValue = "tieba.empty";
     this.iconPath = new vscode.ThemeIcon("circle-large-outline");
     if (commandId) {

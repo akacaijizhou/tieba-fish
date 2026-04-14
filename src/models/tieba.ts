@@ -105,10 +105,13 @@ export interface ReadingSession {
   updatedAt: number;
 }
 
+export type TiebaThemePreset = "default" | "minimal" | "document";
+
 export interface TiebaSettings {
   showImages: boolean;
   compactMode: boolean;
   lowContrastMode: boolean;
+  themePreset: TiebaThemePreset;
   cacheMinutes: number;
   maxHistory: number;
   openThreadMode: "active" | "beside";

@@ -34,7 +34,7 @@ export class ForumPanelManager {
       if (latestPage && latestPage.page === page) {
         void this.service.setLatestThreads(latestPage);
       } else {
-        void this.loadForum(existing, { forumName: forum.forumName, page }, false);
+        void this.loadForum(existing, { forumName: forum.forumName, page }, false, `正在加载第 ${page} 页...`);
       }
       return;
     }
@@ -64,13 +64,18 @@ export class ForumPanelManager {
     panel.webview.onDidReceiveMessage(async (message) => {
       switch (message.type) {
         case "ready":
-          await this.loadForum(panel, { forumName: forum.forumName, page }, false);
+          await this.loadForum(panel, { forumName: forum.forumName, page }, false, `正在打开 ${forum.displayName} 吧...`);
           break;
         case "refreshForum":
-          await this.loadForum(panel, message.payload as ForumPanelState, true);
+          await this.loadForum(panel, message.payload as ForumPanelState, true, "正在刷新帖子列表...");
           break;
         case "loadForumPage":
-          await this.loadForum(panel, message.payload as ForumPanelState, false);
+          await this.loadForum(
+            panel,
+            message.payload as ForumPanelState,
+            false,
+            `正在加载第 ${Math.max(1, Number((message.payload as ForumPanelState)?.page ?? 1) || 1)} 页...`
+          );
           break;
         case "openThread":
           await vscode.commands.executeCommand("tieba.openThread", message.payload as ThreadSummary);
@@ -111,16 +116,28 @@ export class ForumPanelManager {
     return undefined;
   }
 
+  broadcastSettings(): void {
+    const settings = this.service.getSettings();
+    for (const panel of this.panels.values()) {
+      panel.webview.postMessage({
+        type: "settingsChanged",
+        payload: settings
+      });
+    }
+  }
+
   private async loadForum(
     panel: vscode.WebviewPanel,
     state: ForumPanelState,
-    forceRefresh: boolean
+    forceRefresh: boolean,
+    loadingMessage: string
   ): Promise<void> {
     panel.webview.postMessage({
       type: "setLoading",
       payload: {
         forumName: state.forumName,
-        page: state.page
+        page: state.page,
+        message: loadingMessage
       }
     });
 
@@ -139,7 +156,8 @@ export class ForumPanelManager {
         type: "forumLoaded",
         payload: {
           ...pageData,
-          fallbackToBrowser: this.service.getSettings().fallbackToBrowser
+          fallbackToBrowser: this.service.getSettings().fallbackToBrowser,
+          settings: this.service.getSettings()
         }
       });
     } catch (error) {
@@ -152,7 +170,8 @@ export class ForumPanelManager {
           message: tiebaError.message,
           code: tiebaError.code,
           sourceUrl: this.service.getForumUrl(state.forumName, state.page),
-          fallbackToBrowser: this.service.getSettings().fallbackToBrowser
+          fallbackToBrowser: this.service.getSettings().fallbackToBrowser,
+          settings: this.service.getSettings()
         }
       });
     }

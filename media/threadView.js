@@ -4,6 +4,7 @@
 
   let state = {
     loading: true,
+    loadingMessage: "正在打开帖子...",
     detail: null,
     error: null,
     favorite: false,
@@ -12,6 +13,7 @@
     expandedComments: {},
     postComments: {},
     lightboxSrc: null,
+    showShortcutHelp: false,
     showBackToTop: false,
     settings: {
       showImages: true,
@@ -35,6 +37,7 @@
 
   function applyBodySettings() {
     document.body.classList.toggle("hide-images", !state.settings.showImages);
+    document.body.dataset.themePreset = state.settings.themePreset || "default";
   }
 
   function getVisiblePosts() {
@@ -52,6 +55,164 @@
     return escapeHtml(item.contentText || "");
   }
 
+  function renderFeedback(kind, message, compact = false) {
+    if (!message) {
+      return "";
+    }
+
+    return `
+      <div class="feedback-strip ${kind === "error" ? "is-error" : "is-loading"}${compact ? " is-compact" : ""}">
+        ${kind === "loading" ? '<span class="loading-spinner" aria-hidden="true"></span>' : ""}
+        <span>${escapeHtml(message)}</span>
+      </div>
+    `;
+  }
+
+  function isEditableTarget(target) {
+    if (!target) {
+      return false;
+    }
+
+    const tagName = target.tagName;
+    return tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT" || target.isContentEditable;
+  }
+
+  function toggleShortcutHelp(forceValue) {
+    const nextValue = typeof forceValue === "boolean" ? forceValue : !state.showShortcutHelp;
+    state = {
+      ...state,
+      showShortcutHelp: nextValue
+    };
+    render();
+  }
+
+  function triggerThreadAction(action) {
+    const page = state.detail?.page || 1;
+
+    if (action === "refresh" && !state.loading) {
+      send("refreshThread", { page, onlyLz: state.onlyLz });
+      return;
+    }
+
+    if (action === "images") {
+      send("toggleImages");
+      return;
+    }
+
+    if (action === "external") {
+      send("openExternal");
+      return;
+    }
+
+    if (action === "prev" && page > 1 && !state.loading) {
+      send("loadThreadPage", { page: page - 1, onlyLz: state.onlyLz });
+      return;
+    }
+
+    if (action === "next" && !state.loading) {
+      send("loadThreadPage", { page: page + 1, onlyLz: state.onlyLz });
+      return;
+    }
+
+    if (action === "jumpPage" && !state.loading) {
+      const input = app.querySelector("[data-role='pageJumpInput']");
+      const raw = Number.parseInt(input?.value || "", 10);
+      if (!Number.isFinite(raw) || raw <= 0) {
+        return;
+      }
+
+      const maxPage = state.detail?.pageCount || raw;
+      const targetPage = Math.max(1, Math.min(raw, maxPage));
+      if (targetPage === page) {
+        return;
+      }
+
+      send("loadThreadPage", { page: targetPage, onlyLz: state.onlyLz });
+      return;
+    }
+
+    if (action === "onlyLz" && !state.loading) {
+      const currentPage = state.detail?.page || 1;
+      if (!state.onlyLz) {
+        state = {
+          ...state,
+          onlyLz: true,
+          lastFullPageBeforeOnlyLz: currentPage > 1 ? currentPage : null,
+          loading: true,
+          error: null
+        };
+        render();
+        send("toggleOnlyLz", { page: 1, onlyLz: true });
+        return;
+      }
+
+      const restorePage = state.lastFullPageBeforeOnlyLz || currentPage;
+      state = {
+        ...state,
+        onlyLz: false,
+        lastFullPageBeforeOnlyLz: null,
+        loading: true,
+        error: null
+      };
+      render();
+      send("toggleOnlyLz", { page: restorePage, onlyLz: false });
+      return;
+    }
+
+    if (action === "help") {
+      toggleShortcutHelp();
+      return;
+    }
+
+    if (action === "backToTop") {
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth"
+      });
+      return;
+    }
+
+    if (action === "closeLightbox") {
+      state.lightboxSrc = null;
+      render();
+    }
+  }
+
+  function renderShortcutHelp() {
+    if (!state.showShortcutHelp) {
+      return "";
+    }
+
+    return `
+      <div class="shortcut-help">
+        <div class="shortcut-help-backdrop" data-action="closeShortcutHelp"></div>
+        <section class="shortcut-help-dialog">
+          <div class="shortcut-help-head">
+            <h2 class="shortcut-help-title">快捷键帮助</h2>
+            <button class="button button-subtle" data-action="closeShortcutHelp">关闭</button>
+          </div>
+          <div class="shortcut-help-grid">
+            <div class="shortcut-help-card">
+              <div class="shortcut-item"><span class="shortcut-key">?</span><span>打开或关闭帮助</span></div>
+              <div class="shortcut-item"><span class="shortcut-key">R</span><span>刷新当前帖子</span></div>
+              <div class="shortcut-item"><span class="shortcut-key">L</span><span>切换只看楼主</span></div>
+              <div class="shortcut-item"><span class="shortcut-key">I</span><span>显示或隐藏图片</span></div>
+            </div>
+            <div class="shortcut-help-card">
+              <div class="shortcut-item"><span class="shortcut-key">J</span><span>下一页</span></div>
+              <div class="shortcut-item"><span class="shortcut-key">K</span><span>上一页</span></div>
+              <div class="shortcut-item"><span class="shortcut-key">G</span><span>聚焦跳页输入框</span></div>
+              <div class="shortcut-item"><span class="shortcut-key">Esc</span><span>关闭帮助或图片预览</span></div>
+            </div>
+            <div class="shortcut-help-card">
+              <div class="shortcut-item"><span class="shortcut-key">Ctrl+Alt+X</span><span>老板键</span></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    `;
+  }
+
   function renderComments(post) {
     if (!post.commentsPreview) {
       return "";
@@ -67,6 +228,7 @@
     const hasPrev = loadedState?.hasPrev ?? (currentPage > 1);
     const hasMore = loadedState?.hasMore ?? (pageCount > currentPage);
     const hasLoadedComments = !!loadedState;
+    const commentsLoading = !!loadedState?.loading;
 
     return `
       <div class="comment-thread">
@@ -78,14 +240,15 @@
               data-toggle-comments="${escapeHtml(post.postId)}"
               aria-label="${isExpanded ? "收起回复" : "展开回复"}"
               title="${isExpanded ? "收起回复" : "展开回复"}"
+              ${commentsLoading ? " disabled" : ""}
             >${isExpanded ? "▲" : "▼"}</button>
           </div>
         </div>
         ${isExpanded
           ? loadedState?.loading
-            ? `<div class="hint">正在加载楼中楼${loadedState.page ? ` · 第 ${escapeHtml(loadedState.page)} 页` : ""}…</div>`
+            ? renderFeedback("loading", loadedState.message || `正在加载${loadedState.page ? `第 ${loadedState.page} 页` : ""}回复...`, true)
             : loadedState?.error && items.length === 0
-              ? `<div class="hint">${escapeHtml(loadedState.error)}</div>`
+              ? renderFeedback("error", loadedState.error, true)
               : items.length > 0
                 ? `<div class="comment-list">
                     ${items
@@ -108,15 +271,15 @@
                       ? `<div class="comment-pagination">
                           <button class="button button-subtle" data-comments-page="${escapeHtml(post.postId)}:${escapeHtml(
                             String(currentPage - 1)
-                          )}"${hasPrev ? "" : " disabled"}>上一页</button>
+                          )}"${hasPrev && !commentsLoading ? "" : " disabled"}>上一页</button>
                           <div class="hint">第 ${escapeHtml(currentPage)}${pageCount ? ` / ${escapeHtml(pageCount)}` : ""} 页</div>
                           <button class="button button-subtle" data-comments-page="${escapeHtml(post.postId)}:${escapeHtml(
                             String(currentPage + 1)
-                          )}"${hasMore ? "" : " disabled"}>下一页</button>
+                          )}"${hasMore && !commentsLoading ? "" : " disabled"}>下一页</button>
                         </div>`
                       : ""
                   }
-                  ${loadedState?.error && items.length > 0 ? `<div class="hint">${escapeHtml(loadedState.error)}</div>` : ""}`
+                  ${loadedState?.error && items.length > 0 ? renderFeedback("error", loadedState.error, true) : ""}`
                 : '<div class="hint">这层有楼中楼，但当前没有拿到可展示的评论内容。</div>'
           : ""}
       </div>
@@ -173,16 +336,22 @@
     const detail = state.detail;
     const visiblePosts = getVisiblePosts();
     const pageCount = detail.pageCount || "";
+    const feedback = state.loading
+      ? renderFeedback("loading", state.loadingMessage || "正在加载帖子...")
+      : state.error
+        ? renderFeedback("error", state.error.message)
+        : "";
 
     return `
       <section class="list-shell">
+        ${feedback}
         <div class="simple-list">
           ${visiblePosts.length === 0
             ? '<section class="state">当前页没有可展示的楼层。</section>'
             : visiblePosts.map(renderPost).join("")}
         </div>
         <div class="footer-nav">
-          <button class="button" data-action="prev"${detail.page <= 1 ? " disabled" : ""}>上一页</button>
+          <button class="button" data-action="prev"${detail.page <= 1 || state.loading ? " disabled" : ""}>上一页</button>
           <div class="footer-tools">
             <div class="hint">只保留正文、图片和楼中楼</div>
             <div class="page-jump">
@@ -194,12 +363,13 @@
                 min="1"
                 ${pageCount ? `max="${escapeHtml(pageCount)}"` : ""}
                 value="${escapeHtml(detail.page || 1)}"
+                ${state.loading ? "disabled" : ""}
               />
               <span class="hint">页</span>
-              <button class="button button-subtle" data-action="jumpPage">跳转</button>
+              <button class="button button-subtle" data-action="jumpPage"${state.loading ? " disabled" : ""}>跳转</button>
             </div>
           </div>
-          <button class="button" data-action="next"${detail.pageCount && detail.page >= detail.pageCount ? " disabled" : ""}>下一页</button>
+          <button class="button" data-action="next"${state.loading || (detail.pageCount && detail.page >= detail.pageCount) ? " disabled" : ""}>下一页</button>
         </div>
       </section>
     `;
@@ -230,9 +400,9 @@
     const sourceThread = detail?.thread || null;
     const visiblePosts = getVisiblePosts();
 
-    const content = state.loading
-      ? '<section class="state">正在加载帖子内容…</section>'
-      : state.error
+    const content = state.loading && !detail
+      ? `<section class="state">${renderFeedback("loading", state.loadingMessage || "正在加载帖子内容...")}</section>`
+      : state.error && !detail
         ? renderError()
         : renderLoaded();
 
@@ -247,14 +417,16 @@
               </div>
             </div>
             <div class="toolbar">
-              <button class="button" data-action="refresh">刷新</button>
-              <button class="button${state.onlyLz ? " is-active" : ""}" data-action="onlyLz">${state.onlyLz ? "只看楼主中" : "只看楼主"}</button>
+              <button class="button" data-action="refresh"${state.loading ? " disabled" : ""}>刷新</button>
+              <button class="button${state.onlyLz ? " is-active" : ""}" data-action="onlyLz"${state.loading ? " disabled" : ""}>${state.onlyLz ? "只看楼主中" : "只看楼主"}</button>
               <button class="button" data-action="images">${state.settings.showImages ? "隐藏图片" : "显示图片"}</button>
+              <button class="button" data-action="help">快捷键</button>
               <button class="button" data-action="external">系统浏览器</button>
             </div>
           </div>
         </header>
         ${content}
+        ${renderShortcutHelp()}
         ${state.showBackToTop ? '<button class="back-to-top" data-action="backToTop">回到顶部</button>' : ""}
         ${state.lightboxSrc
           ? `<div class="lightbox">
@@ -271,95 +443,19 @@
     app.querySelectorAll("[data-action]").forEach((element) => {
       element.addEventListener("click", () => {
         const action = element.getAttribute("data-action");
-        const page = state.detail?.page || 1;
-        if (action === "refresh") {
-          send("refreshThread", { page, onlyLz: state.onlyLz });
-        }
         if (action === "favorite") {
           send("favoriteThread");
-        }
-        if (action === "images") {
-          send("toggleImages");
+          return;
         }
         if (action === "browser") {
           send("openInSimpleBrowser");
-        }
-        if (action === "external") {
-          send("openExternal");
-        }
-        if (action === "prev" && page > 1) {
-          send("loadThreadPage", { page: page - 1, onlyLz: state.onlyLz });
-        }
-        if (action === "next") {
-          send("loadThreadPage", { page: page + 1, onlyLz: state.onlyLz });
-        }
-        if (action === "jumpPage") {
-          const input = app.querySelector("[data-role='pageJumpInput']");
-          const raw = Number.parseInt(input?.value || "", 10);
-          if (!Number.isFinite(raw) || raw <= 0) {
-            return;
-          }
-
-          const maxPage = state.detail?.pageCount || raw;
-          const targetPage = Math.max(1, Math.min(raw, maxPage));
-          if (targetPage === page) {
-            return;
-          }
-
-          send("loadThreadPage", { page: targetPage, onlyLz: state.onlyLz });
-        }
-        if (action === "onlyLz") {
-          const currentPage = state.detail?.page || 1;
-          if (!state.onlyLz) {
-            state = {
-              ...state,
-              onlyLz: true,
-              lastFullPageBeforeOnlyLz: currentPage > 1 ? currentPage : null
-            };
-
-            if (currentPage > 1) {
-              state = {
-                ...state,
-                loading: true,
-                error: null
-              };
-              render();
-              send("toggleOnlyLz", { page: 1, onlyLz: true });
-              return;
-            }
-
-            state = {
-              ...state,
-              loading: true,
-              error: null
-            };
-            render();
-            send("toggleOnlyLz", { page: 1, onlyLz: true });
-            return;
-          }
-
-          const restorePage = state.lastFullPageBeforeOnlyLz || currentPage;
-          state = {
-            ...state,
-            onlyLz: false,
-            lastFullPageBeforeOnlyLz: null,
-            loading: true,
-            error: null
-          };
-          render();
-          send("toggleOnlyLz", { page: restorePage, onlyLz: false });
           return;
         }
-        if (action === "backToTop") {
-          window.scrollTo({
-            top: 0,
-            behavior: "smooth"
-          });
+        if (action === "closeShortcutHelp") {
+          toggleShortcutHelp(false);
+          return;
         }
-        if (action === "closeLightbox") {
-          state.lightboxSrc = null;
-          render();
-        }
+        triggerThreadAction(action);
       });
     });
 
@@ -448,7 +544,12 @@
   window.addEventListener("message", (event) => {
     const { type, payload } = event.data || {};
     if (type === "setLoading") {
-      state = { ...state, loading: true, error: null };
+      state = {
+        ...state,
+        loading: true,
+        loadingMessage: payload?.message || "正在加载帖子...",
+        error: null
+      };
       render();
       return;
     }
@@ -466,6 +567,7 @@
         ...state,
         loading: false,
         error: null,
+        loadingMessage: "",
         detail: payload,
         onlyLz: !!payload.onlyLz,
         favorite: payload.favorite,
@@ -494,7 +596,8 @@
         ...state,
         loading: false,
         error: payload,
-        detail: null,
+        loadingMessage: "",
+        detail: state.detail,
         lightboxSrc: null,
         showBackToTop: false,
         settings: nextSettings
@@ -527,6 +630,7 @@
             ...state.postComments[payload.postId],
             loading: true,
             error: null,
+            message: payload.message || `正在加载第 ${payload.page || 1} 页回复...`,
             page: payload.page || state.postComments[payload.postId]?.page || 1,
             items: state.postComments[payload.postId]?.items || []
           }
@@ -543,6 +647,7 @@
           [payload.postId]: {
             loading: false,
             error: null,
+            message: "",
             page: payload.page || 1,
             pageCount: payload.pageCount || 1,
             hasPrev: !!payload.hasPrev,
@@ -563,6 +668,7 @@
           [payload.postId]: {
             loading: false,
             error: payload.message,
+            message: "",
             page: state.postComments[payload.postId]?.page || 1,
             pageCount: state.postComments[payload.postId]?.pageCount || 1,
             hasPrev: state.postComments[payload.postId]?.hasPrev || false,
@@ -577,9 +683,72 @@
   });
 
   window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && state.lightboxSrc) {
-      state.lightboxSrc = null;
-      render();
+    if (event.key === "Escape") {
+      if (state.lightboxSrc) {
+        state.lightboxSrc = null;
+        render();
+        return;
+      }
+
+      if (state.showShortcutHelp) {
+        toggleShortcutHelp(false);
+      }
+      return;
+    }
+
+    if (isEditableTarget(event.target)) {
+      return;
+    }
+
+    if ((event.key === "?" || (event.key === "/" && event.shiftKey)) && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      event.preventDefault();
+      toggleShortcutHelp();
+      return;
+    }
+
+    if (state.showShortcutHelp) {
+      return;
+    }
+
+    const key = String(event.key || "").toLowerCase();
+
+    if (key === "r") {
+      event.preventDefault();
+      triggerThreadAction("refresh");
+      return;
+    }
+
+    if (key === "l") {
+      event.preventDefault();
+      triggerThreadAction("onlyLz");
+      return;
+    }
+
+    if (key === "i") {
+      event.preventDefault();
+      triggerThreadAction("images");
+      return;
+    }
+
+    if (key === "j") {
+      event.preventDefault();
+      triggerThreadAction("next");
+      return;
+    }
+
+    if (key === "k") {
+      event.preventDefault();
+      triggerThreadAction("prev");
+      return;
+    }
+
+    if (key === "g") {
+      event.preventDefault();
+      const input = app.querySelector("[data-role='pageJumpInput']");
+      if (input) {
+        input.focus();
+        input.select?.();
+      }
     }
   });
   window.addEventListener("scroll", updateBackToTopVisibility, { passive: true });
