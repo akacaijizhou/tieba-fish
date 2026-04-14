@@ -93,9 +93,10 @@ export class ActionTreeItem extends vscode.TreeItem {
 export class ContinueReadingTreeItem extends vscode.TreeItem {
   constructor(readonly session: ReadingSession) {
     super("继续阅读", vscode.TreeItemCollapsibleState.None);
-    this.description = `${session.thread.forumName}吧 · 第 ${session.page} 页`;
+    const modeLabel = session.onlyLz ? " · 只看楼主" : "";
+    this.description = `${session.thread.forumName}吧 · 第 ${session.page} 页${modeLabel}`;
     this.tooltip = new vscode.MarkdownString(
-      `**继续阅读**\n\n${session.thread.title}\n\n${session.thread.forumName}吧 · 第 ${session.page} 页`
+      `**继续阅读**\n\n${session.thread.title}\n\n${session.thread.forumName}吧 · 第 ${session.page} 页${modeLabel}`
     );
     this.contextValue = "tieba.continueReading";
     this.iconPath = new vscode.ThemeIcon("history");

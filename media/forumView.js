@@ -12,7 +12,9 @@
     loadingMessage: "正在打开贴吧...",
     error: null,
     settings: {
-      themePreset: "default"
+      themePreset: "default",
+      compactMode: false,
+      lowContrastMode: true
     }
   };
 
@@ -31,6 +33,8 @@
 
   function applyBodySettings() {
     document.body.dataset.themePreset = state.settings.themePreset || "default";
+    document.body.classList.toggle("compact-mode", !!state.settings.compactMode);
+    document.body.classList.toggle("low-contrast-mode", !!state.settings.lowContrastMode);
   }
 
   function renderBadges(thread) {

@@ -7,12 +7,14 @@ interface ThreadPanelState {
   thread: ThreadSummary;
   page: number;
   onlyLz: boolean;
+  lastFullPageBeforeOnlyLz: number | null;
 }
 
 export interface ThreadPanelSession {
   thread: ThreadSummary;
   page: number;
   onlyLz: boolean;
+  lastFullPageBeforeOnlyLz: number | null;
 }
 
 export class ThreadPanelManager {
@@ -23,7 +25,13 @@ export class ThreadPanelManager {
 
   async open(
     thread: ThreadSummary,
-    options?: { page?: number; onlyLz?: boolean; preserveFocus?: boolean; recordHistory?: boolean }
+    options?: {
+      page?: number;
+      onlyLz?: boolean;
+      lastFullPageBeforeOnlyLz?: number | null;
+      preserveFocus?: boolean;
+      recordHistory?: boolean;
+    }
   ): Promise<void> {
     if (options?.recordHistory !== false) {
       await this.service.recordHistory(thread);
@@ -32,12 +40,19 @@ export class ThreadPanelManager {
     const previousSession = this.sessions.get(thread.threadId);
     const previousPage = previousSession?.page;
     const previousOnlyLz = previousSession?.onlyLz;
+    const previousLastFullPageBeforeOnlyLz = previousSession?.lastFullPageBeforeOnlyLz ?? null;
     const page = Math.max(1, options?.page ?? previousPage ?? 1);
     const onlyLz = options?.onlyLz ?? previousOnlyLz ?? false;
+    const lastFullPageBeforeOnlyLz = resolveLastFullPageBeforeOnlyLz(
+      options?.lastFullPageBeforeOnlyLz,
+      onlyLz,
+      previousLastFullPageBeforeOnlyLz
+    );
     this.sessions.set(thread.threadId, {
       thread,
       page,
-      onlyLz
+      onlyLz,
+      lastFullPageBeforeOnlyLz
     });
 
     const existing = this.panels.get(thread.threadId);
@@ -49,8 +64,12 @@ export class ThreadPanelManager {
           favorite: this.service.isFavorite(thread.threadId)
         }
       });
-      if (previousPage !== page || previousOnlyLz !== onlyLz) {
-        await this.loadThread(existing, { thread, page, onlyLz }, false, `正在加载第 ${page} 页...`);
+      if (
+        previousPage !== page
+        || previousOnlyLz !== onlyLz
+        || previousLastFullPageBeforeOnlyLz !== lastFullPageBeforeOnlyLz
+      ) {
+        await this.loadThread(existing, { thread, page, onlyLz, lastFullPageBeforeOnlyLz }, false, `正在加载第 ${page} 页...`);
       }
       return;
     }
@@ -79,32 +98,57 @@ export class ThreadPanelManager {
     panel.webview.onDidReceiveMessage(async (message) => {
       switch (message.type) {
         case "ready":
-          await this.loadThread(panel, { thread, page, onlyLz }, false, "正在打开帖子...");
+          await this.loadThread(panel, { thread, page, onlyLz, lastFullPageBeforeOnlyLz }, false, "正在打开帖子...");
           break;
         case "refreshThread":
+          {
+            const messageOnlyLz = Boolean(message.payload?.onlyLz);
+            const currentSession = this.sessions.get(thread.threadId);
+            const messageLastFullPageBeforeOnlyLz = resolveLastFullPageBeforeOnlyLz(
+              message.payload?.lastFullPageBeforeOnlyLz,
+              messageOnlyLz,
+              currentSession?.lastFullPageBeforeOnlyLz
+            );
+            await this.loadThread(
+              panel,
+              {
+                thread,
+                page: Math.max(1, Number(message.payload?.page ?? 1) || 1),
+                onlyLz: messageOnlyLz,
+                lastFullPageBeforeOnlyLz: messageLastFullPageBeforeOnlyLz
+              },
+              true,
+              "正在刷新帖子..."
+            );
+          }
+          break;
+        case "loadThreadPage":
           await this.loadThread(
             panel,
             {
               thread,
               page: Math.max(1, Number(message.payload?.page ?? 1) || 1),
-              onlyLz: Boolean(message.payload?.onlyLz)
+              onlyLz: Boolean(message.payload?.onlyLz),
+              lastFullPageBeforeOnlyLz: resolveLastFullPageBeforeOnlyLz(
+                message.payload?.lastFullPageBeforeOnlyLz,
+                Boolean(message.payload?.onlyLz),
+                this.sessions.get(thread.threadId)?.lastFullPageBeforeOnlyLz
+              )
             },
-            true,
-            "正在刷新帖子..."
+            false,
+            `正在加载第 ${Math.max(1, Number(message.payload?.page ?? 1) || 1)} 页...`
           );
-          break;
-        case "loadThreadPage":
-          await this.loadThread(panel, {
-            thread,
-            page: Math.max(1, Number(message.payload?.page ?? 1) || 1),
-            onlyLz: Boolean(message.payload?.onlyLz)
-          }, false, `正在加载第 ${Math.max(1, Number(message.payload?.page ?? 1) || 1)} 页...`);
           break;
         case "toggleOnlyLz":
           await this.loadThread(panel, {
             thread,
             page: Math.max(1, Number(message.payload?.page ?? 1) || 1),
-            onlyLz: Boolean(message.payload?.onlyLz)
+            onlyLz: Boolean(message.payload?.onlyLz),
+            lastFullPageBeforeOnlyLz: resolveLastFullPageBeforeOnlyLz(
+              message.payload?.lastFullPageBeforeOnlyLz,
+              Boolean(message.payload?.onlyLz),
+              this.sessions.get(thread.threadId)?.lastFullPageBeforeOnlyLz
+            )
           }, false, Boolean(message.payload?.onlyLz) ? "正在切换到只看楼主..." : "正在切回全部楼层...");
           break;
         case "toggleImages":
@@ -192,7 +236,8 @@ export class ThreadPanelManager {
     return Array.from(this.sessions.values()).map((session) => ({
       thread: session.thread,
       page: session.page,
-      onlyLz: session.onlyLz
+      onlyLz: session.onlyLz,
+      lastFullPageBeforeOnlyLz: session.lastFullPageBeforeOnlyLz
     }));
   }
 
@@ -250,15 +295,20 @@ export class ThreadPanelManager {
       this.sessions.set(state.thread.threadId, {
         thread: updatedThread,
         page: detail.page,
-        onlyLz: Boolean(detail.onlyLz)
+        onlyLz: Boolean(detail.onlyLz),
+        lastFullPageBeforeOnlyLz: state.lastFullPageBeforeOnlyLz ?? null
       });
-      await this.service.recordReadingSession(updatedThread, detail.page);
+      await this.service.recordReadingSession(updatedThread, detail.page, {
+        onlyLz: Boolean(detail.onlyLz),
+        lastFullPageBeforeOnlyLz: state.lastFullPageBeforeOnlyLz ?? null
+      });
       panel.webview.postMessage({
         type: "threadLoaded",
         payload: {
           ...detail,
           thread: updatedThread,
           favorite: this.service.isFavorite(state.thread.threadId),
+          lastFullPageBeforeOnlyLz: state.lastFullPageBeforeOnlyLz ?? null,
           settings: this.service.getSettings()
         }
       });
@@ -303,6 +353,27 @@ export class ThreadPanelManager {
   </body>
 </html>`;
   }
+}
+
+function resolveLastFullPageBeforeOnlyLz(
+  value: unknown,
+  onlyLz: boolean,
+  fallback?: number | null
+): number | null {
+  if (!onlyLz) {
+    return null;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return Math.max(1, Math.floor(parsed));
+  }
+
+  return fallback ?? null;
 }
 
 function normalizeTiebaError(error: unknown): TiebaError {

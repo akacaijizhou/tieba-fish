@@ -9,6 +9,7 @@ import {
   ReadingSession,
   ThreadDetailPage,
   ThreadSummary,
+  TiebaContentSource,
   TiebaSettings
 } from "../models/tieba";
 import { CacheStore } from "../storage/cacheStore";
@@ -25,16 +26,22 @@ import { LiveTiebaDataSource, buildForumUrl, buildThreadUrl } from "./datasource
 import { PythonAiotiebaDataSource, PythonRuntimeCheckResult } from "./datasource/pythonAiotiebaDataSource";
 import { TiebaDataSource } from "./datasource/tiebaDataSource";
 
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const BAIDU_SUGGEST_URL = "https://suggestion.baidu.com/su";
 const FORUM_SUGGESTION_STOP_WORDS = ["官网", "下载", "入口", "实时行情", "官服"];
+const WEB_POST_COMMENTS_HINT = "当前网页回退链路只展示楼中楼预览；如需展开完整回复，请改用 VS Code 浏览器或系统浏览器。";
 
 export interface ForumNameSuggestion {
   forumName: string;
   hint: string;
 }
 
-export type TiebaResolvedSource = "aiotieba" | "web";
+export type TiebaResolvedSource = TiebaContentSource;
+
+interface LoadedFromPreferredSource<T> {
+  result: T;
+  source: TiebaResolvedSource;
+}
 
 export interface TiebaStatusSnapshot {
   hasBduss: boolean;
@@ -239,8 +246,12 @@ export class TiebaService {
     this.changeEmitter.fire();
   }
 
-  async recordReadingSession(thread: ThreadSummary, page: number): Promise<void> {
-    await this.readingSessionStore.set(thread, page);
+  async recordReadingSession(
+    thread: ThreadSummary,
+    page: number,
+    options?: { onlyLz?: boolean; lastFullPageBeforeOnlyLz?: number | null }
+  ): Promise<void> {
+    await this.readingSessionStore.set(thread, page, options);
     this.changeEmitter.fire();
   }
 
@@ -281,7 +292,7 @@ export class TiebaService {
   async refreshLatestThreads(forceRefresh = true): Promise<LatestThreadsSnapshot> {
     const latest = this.getLatestThreads();
     if (!latest) {
-      throw new TiebaError("parse", "还没有最新视图数据。先点开一个关注吧，这里会承接该吧最近一次加载的帖子列表。");
+      throw new TiebaError("parse", "还没有最近列表数据。先点开一个关注吧，这里会承接该吧最近一次加载的帖子列表。");
     }
 
     const pageData = await this.getForumThreads(latest.forumName, latest.page, forceRefresh);
@@ -291,7 +302,7 @@ export class TiebaService {
   async loadLatestThreadsPage(page: number, forceRefresh = false): Promise<LatestThreadsSnapshot> {
     const latest = this.getLatestThreads();
     if (!latest) {
-      throw new TiebaError("parse", "还没有最新视图数据。先点开一个关注吧，这里会承接该吧最近一次加载的帖子列表。");
+      throw new TiebaError("parse", "还没有最近列表数据。先点开一个关注吧，这里会承接该吧最近一次加载的帖子列表。");
     }
 
     const nextPage = Math.max(1, page);
@@ -394,7 +405,13 @@ export class TiebaService {
       }
     }
 
-    const next = await this.loadFromPreferredSources((source) => source.getThreadDetail(input));
+    const loaded = await this.loadFromPreferredSourcesWithSource((source) => source.getThreadDetail(input));
+    const next: ThreadDetailPage = {
+      ...loaded.result,
+      resolvedSource: loaded.source,
+      postCommentsSupported: loaded.source === "aiotieba",
+      postCommentsHint: loaded.source === "web" ? WEB_POST_COMMENTS_HINT : undefined
+    };
     if (ttlMs > 0) {
       await this.threadCache.set(cacheKey, next, ttlMs);
     }
@@ -485,7 +502,7 @@ export class TiebaService {
       addSuggestion(entry.thread.forumName, "收藏");
     }
 
-    addSuggestion(this.latestThreadsStore.get()?.forumName, "最新");
+    addSuggestion(this.latestThreadsStore.get()?.forumName, "最近");
 
     return Array.from(suggestions.values());
   }
@@ -508,6 +525,12 @@ export class TiebaService {
   }
 
   private async loadFromPreferredSources<T>(load: (source: TiebaDataSource) => Promise<T>): Promise<T> {
+    return (await this.loadFromPreferredSourcesWithSource(load)).result;
+  }
+
+  private async loadFromPreferredSourcesWithSource<T>(
+    load: (source: TiebaDataSource) => Promise<T>
+  ): Promise<LoadedFromPreferredSource<T>> {
     const errors: TiebaError[] = [];
     const sources: Array<{ source: TiebaDataSource; name: TiebaResolvedSource }> = [
       { source: this.bridgeDataSource, name: "aiotieba" },
@@ -518,7 +541,10 @@ export class TiebaService {
       try {
         const result = await load(candidate.source);
         this.recordResolvedSource(candidate.name);
-        return result;
+        return {
+          result,
+          source: candidate.name
+        };
       } catch (error) {
         errors.push(normalizeTiebaError(error));
       }

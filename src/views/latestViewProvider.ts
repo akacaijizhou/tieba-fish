@@ -29,18 +29,18 @@ export class LatestViewProvider implements vscode.TreeDataProvider<vscode.TreeIt
 
   async getChildren(): Promise<vscode.TreeItem[]> {
     if (this.isLoading) {
-      return [new LoadingTreeItem("正在加载最新视图...")];
+      return [new LoadingTreeItem("正在加载最近列表...")];
     }
 
     const snapshot = this.service.getLatestThreads();
     if (!snapshot) {
       const forums = this.service.listForums();
-      const items: vscode.TreeItem[] = [new EmptyTreeItem("这里还没有最新内容")];
+      const items: vscode.TreeItem[] = [new EmptyTreeItem("这里还没有最近内容")];
 
       if (forums.length > 0) {
         items.push(
           new InfoTreeItem("先点开一个关注吧", "这里显示的是最近一次打开的吧的帖子列表，不是全站聚合流。"),
-          new ActionTreeItem(`打开 ${forums[0].displayName} 吧`, "tieba.openForum", [forums[0]], "arrow-right", "直接加载一份最新列表")
+          new ActionTreeItem(`打开 ${forums[0].displayName} 吧`, "tieba.openForum", [forums[0]], "arrow-right", "直接加载一份最近列表")
         );
         return items;
       }
@@ -56,7 +56,7 @@ export class LatestViewProvider implements vscode.TreeDataProvider<vscode.TreeIt
       }
 
       items.push(
-        new InfoTreeItem("先添加一个贴吧，再点开它", "只要打开过一个关注吧，这里就会出现对应的最新列表。"),
+        new InfoTreeItem("先添加一个贴吧，再点开它", "只要打开过一个关注吧，这里就会出现对应的最近列表。"),
         new ActionTreeItem("添加贴吧", "tieba.addForum", undefined, "add", "先加一个吧"),
         new ActionTreeItem("打开首页", "tieba.openOnboarding", undefined, "home", "看当前还差哪一步")
       );

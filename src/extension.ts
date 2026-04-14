@@ -7,6 +7,7 @@ import { STORAGE_KEYS } from "./storage/storageKeys";
 import { BossFilesProvider } from "./views/bossFilesProvider";
 import { BossModeManager } from "./views/bossModeManager";
 import { DiagnosticsPanel } from "./views/diagnosticsPanel";
+import { FavoritesViewProvider } from "./views/favoritesViewProvider";
 import { FollowedForumsProvider } from "./views/followedForumsProvider";
 import { ForumPanelManager } from "./views/forumPanel";
 import { HistoryViewProvider } from "./views/historyViewProvider";
@@ -28,6 +29,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const service = new TiebaService(context);
   const followedForumsProvider = new FollowedForumsProvider(service);
   const latestViewProvider = new LatestViewProvider(service);
+  const favoritesViewProvider = new FavoritesViewProvider(service);
   const historyViewProvider = new HistoryViewProvider(service);
   const forumPanels = new ForumPanelManager(context, service);
   const threadPanels = new ThreadPanelManager(context, service);
@@ -77,6 +79,9 @@ export function activate(context: vscode.ExtensionContext): void {
   const latestView = vscode.window.createTreeView("tieba.latest", {
     treeDataProvider: latestViewProvider
   });
+  const favoritesView = vscode.window.createTreeView("tieba.favorites", {
+    treeDataProvider: favoritesViewProvider
+  });
   const historyView = vscode.window.createTreeView("tieba.history", {
     treeDataProvider: historyViewProvider
   });
@@ -87,6 +92,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     followedForumsView,
     latestView,
+    favoritesView,
     historyView,
     bossFilesView,
   );
@@ -97,7 +103,7 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    if (!followedForumsView.visible && !latestView.visible && !historyView.visible) {
+    if (!followedForumsView.visible && !latestView.visible && !favoritesView.visible && !historyView.visible) {
       return;
     }
 
@@ -127,7 +133,7 @@ export function activate(context: vscode.ExtensionContext): void {
     followedForumsProvider,
     "正在加载关注吧..."
   );
-  const latestViewLoading = createTreeViewLoadingController(latestView, latestViewProvider, "正在加载最新视图...");
+  const latestViewLoading = createTreeViewLoadingController(latestView, latestViewProvider, "正在加载最近列表...");
   const historyViewLoading = createTreeViewLoadingController(historyView, historyViewProvider, "正在加载历史...");
 
   context.subscriptions.push(followedForumsLoading, latestViewLoading, historyViewLoading);
@@ -136,6 +142,9 @@ export function activate(context: vscode.ExtensionContext): void {
       void maybeAutoOpenOnboarding();
     }),
     latestView.onDidChangeVisibility(() => {
+      void maybeAutoOpenOnboarding();
+    }),
+    favoritesView.onDidChangeVisibility(() => {
       void maybeAutoOpenOnboarding();
     }),
     historyView.onDidChangeVisibility(() => {
@@ -149,6 +158,7 @@ export function activate(context: vscode.ExtensionContext): void {
     service.onDidChange(() => {
       followedForumsProvider.refresh();
       latestViewProvider.refresh();
+      favoritesViewProvider.refresh();
       historyViewProvider.refresh();
       void refreshStatusBar();
     }),
@@ -318,9 +328,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("tieba.refreshLatest", async () => {
       try {
-        await latestViewLoading.run("正在刷新最新视图...", () => service.refreshLatestThreads(true));
+        await latestViewLoading.run("正在刷新最近列表...", () => service.refreshLatestThreads(true));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "刷新最新数据失败。";
+        const message = error instanceof Error ? error.message : "刷新最近列表失败。";
         void vscode.window.showErrorMessage(message);
       }
     }),
@@ -416,7 +426,9 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       await threadPanels.open(session.thread, {
-        page: session.page
+        page: session.page,
+        onlyLz: session.onlyLz,
+        lastFullPageBeforeOnlyLz: session.lastFullPageBeforeOnlyLz
       });
     }),
 
@@ -823,15 +835,11 @@ function getThemePresetLabel(themePreset: TiebaThemePreset): string {
 }
 
 function shouldAutoOpenOnboarding(service: TiebaService, diagnostics: Awaited<ReturnType<TiebaService["getDiagnosticsReport"]>>): boolean {
-  if (!diagnostics.bridge.available) {
-    return true;
-  }
-
-  if (!diagnostics.hasBduss || !diagnostics.hasStoken) {
-    return true;
-  }
-
-  return service.listForums().length === 0 && service.listHistory().length === 0;
+  void diagnostics;
+  return service.listForums().length === 0
+    && service.listFavorites().length === 0
+    && service.listHistory().length === 0
+    && !service.getReadingSession();
 }
 
 async function openThreadFromInput(threadPanels: ThreadPanelManager): Promise<void> {

@@ -76,15 +76,20 @@ export interface PostCommentsPage {
   items: PostCommentItem[];
 }
 
+export type TiebaContentSource = "aiotieba" | "web";
+
 export interface ThreadDetailPage {
   threadId: string;
   title: string;
   forumName: string;
   threadAuthorName?: string;
   threadAuthorId?: string;
+  resolvedSource?: TiebaContentSource;
   page: number;
   pageCount?: number;
   onlyLz?: boolean;
+  postCommentsSupported?: boolean;
+  postCommentsHint?: string;
   posts: PostItem[];
   sourceUrl: string;
 }
@@ -102,6 +107,8 @@ export interface HistoryEntry {
 export interface ReadingSession {
   thread: ThreadSummary;
   page: number;
+  onlyLz?: boolean;
+  lastFullPageBeforeOnlyLz?: number | null;
   updatedAt: number;
 }
 

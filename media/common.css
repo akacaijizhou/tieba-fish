@@ -331,6 +331,13 @@ body.hide-images .post-content img:not(.tieba-emoji) {
   margin-top: 8px;
 }
 
+.reply-hint {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .button.button-subtle {
   min-height: 22px;
   padding: 1px 8px;
@@ -606,6 +613,45 @@ body[data-theme-preset="document"] .post-content,
 body[data-theme-preset="document"] .thread-summary,
 body[data-theme-preset="document"] .comment-content {
   font-family: "Georgia", "Noto Serif SC", "Source Han Serif SC", serif;
+}
+
+body.compact-mode {
+  --content-max-width: 820px;
+  --page-padding-top: 8px;
+  --page-padding-side: 12px;
+  --page-padding-bottom: 16px;
+  --panel-gap: 8px;
+  --page-head-gap: 6px;
+  --page-head-padding-bottom: 7px;
+  --row-padding: 7px;
+  --content-font-size: 12px;
+  --content-line-height: 1.62;
+  --title-font-size: 16px;
+  --image-thumb-size: 56px;
+  --toolbar-button-padding-y: 2px;
+  --toolbar-button-padding-x: 6px;
+}
+
+body.low-contrast-mode {
+  --muted: color-mix(in srgb, var(--text) 48%, transparent);
+  --line: color-mix(in srgb, var(--text) 9%, transparent);
+  --surface: color-mix(in srgb, var(--bg) 98%, white 2%);
+  --surface-2: color-mix(in srgb, var(--bg) 96%, white 4%);
+  --reply-text: color-mix(in srgb, var(--text) 70%, transparent);
+  --reply-accent: color-mix(in srgb, var(--accent) 58%, var(--text) 42%);
+}
+
+body.low-contrast-mode .button {
+  background: transparent;
+}
+
+body.low-contrast-mode .feedback-strip {
+  background: color-mix(in srgb, var(--bg) 98%, var(--text) 2%);
+}
+
+body.low-contrast-mode .back-to-top {
+  background: color-mix(in srgb, var(--bg) 99%, var(--text) 1%);
+  box-shadow: none;
 }
 
 @keyframes tieba-spin {

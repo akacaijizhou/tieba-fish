@@ -38,6 +38,8 @@
   function applyBodySettings() {
     document.body.classList.toggle("hide-images", !state.settings.showImages);
     document.body.dataset.themePreset = state.settings.themePreset || "default";
+    document.body.classList.toggle("compact-mode", !!state.settings.compactMode);
+    document.body.classList.toggle("low-contrast-mode", !!state.settings.lowContrastMode);
   }
 
   function getVisiblePosts() {
@@ -90,7 +92,11 @@
     const page = state.detail?.page || 1;
 
     if (action === "refresh" && !state.loading) {
-      send("refreshThread", { page, onlyLz: state.onlyLz });
+      send("refreshThread", {
+        page,
+        onlyLz: state.onlyLz,
+        lastFullPageBeforeOnlyLz: state.lastFullPageBeforeOnlyLz
+      });
       return;
     }
 
@@ -105,12 +111,20 @@
     }
 
     if (action === "prev" && page > 1 && !state.loading) {
-      send("loadThreadPage", { page: page - 1, onlyLz: state.onlyLz });
+      send("loadThreadPage", {
+        page: page - 1,
+        onlyLz: state.onlyLz,
+        lastFullPageBeforeOnlyLz: state.lastFullPageBeforeOnlyLz
+      });
       return;
     }
 
     if (action === "next" && !state.loading) {
-      send("loadThreadPage", { page: page + 1, onlyLz: state.onlyLz });
+      send("loadThreadPage", {
+        page: page + 1,
+        onlyLz: state.onlyLz,
+        lastFullPageBeforeOnlyLz: state.lastFullPageBeforeOnlyLz
+      });
       return;
     }
 
@@ -127,7 +141,11 @@
         return;
       }
 
-      send("loadThreadPage", { page: targetPage, onlyLz: state.onlyLz });
+      send("loadThreadPage", {
+        page: targetPage,
+        onlyLz: state.onlyLz,
+        lastFullPageBeforeOnlyLz: state.lastFullPageBeforeOnlyLz
+      });
       return;
     }
 
@@ -142,7 +160,11 @@
           error: null
         };
         render();
-        send("toggleOnlyLz", { page: 1, onlyLz: true });
+        send("toggleOnlyLz", {
+          page: 1,
+          onlyLz: true,
+          lastFullPageBeforeOnlyLz: currentPage > 1 ? currentPage : null
+        });
         return;
       }
 
@@ -155,7 +177,11 @@
         error: null
       };
       render();
-      send("toggleOnlyLz", { page: restorePage, onlyLz: false });
+      send("toggleOnlyLz", {
+        page: restorePage,
+        onlyLz: false,
+        lastFullPageBeforeOnlyLz: null
+      });
       return;
     }
 
@@ -213,11 +239,30 @@
     `;
   }
 
+  function renderCommentCards(items) {
+    return items
+      .map(
+        (item) => `
+          <div class="comment-card">
+            <div class="comment-meta">
+              <span>${escapeHtml(item.authorName)}</span>
+              ${item.isLz ? '<span class="tag">楼主</span>' : ""}
+              ${item.createdAtLabel ? `<span>${escapeHtml(item.createdAtLabel)}</span>` : ""}
+            </div>
+            <div class="comment-content">${renderCommentContent(item)}</div>
+          </div>
+        `
+      )
+      .join("");
+  }
+
   function renderComments(post) {
     if (!post.commentsPreview) {
       return "";
     }
 
+    const supportsPostComments = state.detail?.postCommentsSupported !== false;
+    const previewOnlyHint = state.detail?.postCommentsHint || "当前链路只展示楼中楼预览。";
     const isExpanded = !!state.expandedComments[post.postId];
     const loadedState = state.postComments[post.postId];
     const previewItems = post.commentsPreview.items || [];
@@ -229,6 +274,21 @@
     const hasMore = loadedState?.hasMore ?? (pageCount > currentPage);
     const hasLoadedComments = !!loadedState;
     const commentsLoading = !!loadedState?.loading;
+
+    if (!supportsPostComments) {
+      return `
+        <div class="comment-thread is-preview-only">
+          <div class="comment-summary-head">
+            <div class="reply-summary">
+              <span class="reply-label">回复 ${escapeHtml(total)} 条</span>
+              <span class="tag">仅预览</span>
+            </div>
+          </div>
+          ${previewItems.length > 0 ? `<div class="comment-list">${renderCommentCards(previewItems)}</div>` : ""}
+          <div class="reply-hint">${escapeHtml(previewOnlyHint)}</div>
+        </div>
+      `;
+    }
 
     return `
       <div class="comment-thread">
@@ -250,22 +310,7 @@
             : loadedState?.error && items.length === 0
               ? renderFeedback("error", loadedState.error, true)
               : items.length > 0
-                ? `<div class="comment-list">
-                    ${items
-                      .map(
-                        (item) => `
-                          <div class="comment-card">
-                            <div class="comment-meta">
-                              <span>${escapeHtml(item.authorName)}</span>
-                              ${item.isLz ? '<span class="tag">楼主</span>' : ""}
-                              ${item.createdAtLabel ? `<span>${escapeHtml(item.createdAtLabel)}</span>` : ""}
-                            </div>
-                            <div class="comment-content">${renderCommentContent(item)}</div>
-                          </div>
-                        `
-                      )
-                      .join("")}
-                  </div>
+                ? `<div class="comment-list">${renderCommentCards(items)}</div>
                   ${
                     hasLoadedComments
                       ? `<div class="comment-pagination">
@@ -326,6 +371,7 @@
         <div class="hint">${escapeHtml(state.error.message)}</div>
         <div class="toolbar">
           <button class="button" data-action="refresh">重试</button>
+          <button class="button" data-action="browser">VS Code 浏览器</button>
           <button class="button" data-action="external">系统浏览器</button>
         </div>
       </section>
@@ -418,9 +464,11 @@
             </div>
             <div class="toolbar">
               <button class="button" data-action="refresh"${state.loading ? " disabled" : ""}>刷新</button>
+              <button class="button${state.favorite ? " is-active" : ""}" data-action="favorite"${detail ? "" : " disabled"}>${state.favorite ? "取消收藏" : "收藏"}</button>
               <button class="button${state.onlyLz ? " is-active" : ""}" data-action="onlyLz"${state.loading ? " disabled" : ""}>${state.onlyLz ? "只看楼主中" : "只看楼主"}</button>
               <button class="button" data-action="images">${state.settings.showImages ? "隐藏图片" : "显示图片"}</button>
               <button class="button" data-action="help">快捷键</button>
+              <button class="button" data-action="browser">VS Code 浏览器</button>
               <button class="button" data-action="external">系统浏览器</button>
             </div>
           </div>
@@ -571,7 +619,11 @@
         detail: payload,
         onlyLz: !!payload.onlyLz,
         favorite: payload.favorite,
-        lastFullPageBeforeOnlyLz: payload.onlyLz ? state.lastFullPageBeforeOnlyLz : null,
+        lastFullPageBeforeOnlyLz: payload.onlyLz
+          ? (typeof payload.lastFullPageBeforeOnlyLz === "number" && payload.lastFullPageBeforeOnlyLz > 0
+            ? payload.lastFullPageBeforeOnlyLz
+            : state.lastFullPageBeforeOnlyLz)
+          : null,
         expandedComments: {},
         postComments: {},
         lightboxSrc: null,

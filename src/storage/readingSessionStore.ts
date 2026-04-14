@@ -10,15 +10,24 @@ export class ReadingSessionStore {
     return session
       ? {
           ...session,
-          thread: { ...session.thread }
+          thread: { ...session.thread },
+          onlyLz: Boolean(session.onlyLz),
+          lastFullPageBeforeOnlyLz: normalizeStoredPage(session.lastFullPageBeforeOnlyLz)
         }
       : undefined;
   }
 
-  async set(thread: ThreadSummary, page: number): Promise<ReadingSession> {
+  async set(
+    thread: ThreadSummary,
+    page: number,
+    options?: { onlyLz?: boolean; lastFullPageBeforeOnlyLz?: number | null }
+  ): Promise<ReadingSession> {
+    const onlyLz = Boolean(options?.onlyLz);
     const next: ReadingSession = {
       thread: { ...thread },
       page: Math.max(1, page),
+      onlyLz,
+      lastFullPageBeforeOnlyLz: onlyLz ? normalizeStoredPage(options?.lastFullPageBeforeOnlyLz) : null,
       updatedAt: Date.now()
     };
 
@@ -29,4 +38,12 @@ export class ReadingSessionStore {
   async clear(): Promise<void> {
     await this.context.globalState.update(STORAGE_KEYS.readingSession, undefined);
   }
+}
+
+function normalizeStoredPage(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return Math.max(1, Math.floor(value));
 }

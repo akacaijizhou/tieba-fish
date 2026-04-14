@@ -120,6 +120,7 @@ export class BossModeManager {
       await this.threadPanels.open(session.thread, {
         page: session.page,
         onlyLz: session.onlyLz,
+        lastFullPageBeforeOnlyLz: session.lastFullPageBeforeOnlyLz,
         preserveFocus: true,
         recordHistory: false
       });
@@ -136,6 +137,7 @@ export class BossModeManager {
       await this.threadPanels.open(activeThread.thread, {
         page: activeThread.page,
         onlyLz: activeThread.onlyLz,
+        lastFullPageBeforeOnlyLz: activeThread.lastFullPageBeforeOnlyLz,
         recordHistory: false
       });
     }

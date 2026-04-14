@@ -31,6 +31,7 @@
   "activationEvents": [
     "onView:tieba.forums",
     "onView:tieba.latest",
+    "onView:tieba.favorites",
     "onView:tieba.history",
     "onCommand:tieba.addForum",
     "onCommand:tieba.syncFollowedForums",
@@ -70,7 +71,12 @@
         },
         {
           "id": "tieba.latest",
-          "name": "最新",
+          "name": "最近",
+          "when": "!tieba.bossModeEnabled"
+        },
+        {
+          "id": "tieba.favorites",
+          "name": "收藏",
           "when": "!tieba.bossModeEnabled"
         },
         {
@@ -106,11 +112,11 @@
       },
       {
         "command": "tieba.latestPreviousPage",
-        "title": "最新数据上一页"
+        "title": "最近列表上一页"
       },
       {
         "command": "tieba.latestNextPage",
-        "title": "最新数据下一页"
+        "title": "最近列表下一页"
       },
       {
         "command": "tieba.configureAccount",
@@ -225,7 +231,7 @@
         },
         {
           "command": "tieba.refreshAll",
-          "when": "view == tieba.forums || view == tieba.history",
+          "when": "view == tieba.forums || view == tieba.favorites || view == tieba.history",
           "group": "navigation@2"
         },
         {
