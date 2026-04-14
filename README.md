@@ -30,7 +30,7 @@ Tieba Fish 的定位不是完整贴吧客户端，而是把“看帖”这件事
 
 下面这张图是当前主界面的实际使用状态：左侧管理内容入口，右侧阅读正文。
 
-![Tieba Fish 日常阅读视图](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/ScreenShot_2026-04-14_094342_820.png)
+![Tieba Fish 日常阅读视图](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/C.png)
 
 ## 核心能力
 
@@ -60,23 +60,26 @@ Tieba Fish 的定位不是完整贴吧客户端，而是把“看帖”这件事
 
 ## 功能预览
 
-### 首页
-
-首页负责给出当前状态和下一步动作，但现在会优先引导你先开始看，而不是先做环境配置。
-
-![Tieba 首页](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/ScreenShot_2026-04-13_172605_949.png)
-
-### 登录态导入
-
-推荐直接导入完整贴吧 Cookie。插件会自动提取所需字段，并用于阅读和同步关注吧。
-
-![贴吧 Cookie 获取示例](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/ScreenShot_2026-04-13_172725_366.png)
 
 ### 安装 aiotieba
 
 如果系统已经有 Python，但还没有 `aiotieba`，插件内可以直接补齐。
 
-![安装 aiotieba 引导](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/ScreenShot_2026-04-13_172813_277.png)
+![安装 aiotieba 引导](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/D.png)
+
+### 首页
+
+首页负责给出当前状态和下一步动作。
+
+![Tieba 首页](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/A.png)
+
+### 登录态导入
+
+推荐直接导入完整贴吧 Cookie。插件会自动提取所需字段，并用于阅读和同步关注吧。
+
+![贴吧 Cookie 获取示例](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/B.png)
+
+
 
 ## 安装方式
 
