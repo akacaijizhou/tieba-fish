@@ -4,6 +4,7 @@ export const STORAGE_KEYS = {
   favorites: "tieba.favorites",
   history: "tieba.history",
   readingSession: "tieba.readingSession",
+  themePreset: "tieba.themePreset",
   onboardingSeen: "tieba.onboardingSeen",
   onboardingForceNextOpen: "tieba.onboardingForceNextOpen",
   forumCache: "tieba.cache.forumThreads",

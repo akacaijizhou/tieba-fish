@@ -93,7 +93,7 @@ export class TiebaService {
     this.historyStore = new HistoryStore(context);
     this.latestThreadsStore = new LatestThreadsStore(context);
     this.readingSessionStore = new ReadingSessionStore(context);
-    this.settingsStore = new SettingsStore();
+    this.settingsStore = new SettingsStore(context);
     this.authStore = new AuthStore(context);
     this.forumCache = new CacheStore(context, STORAGE_KEYS.forumCache, CACHE_VERSION);
     this.threadCache = new CacheStore(context, STORAGE_KEYS.threadCache, CACHE_VERSION);
