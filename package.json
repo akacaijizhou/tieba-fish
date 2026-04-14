@@ -2,7 +2,7 @@
   "name": "tieba-fish",
   "displayName": "Tieba Fish",
   "description": "在 VS Code 里低打扰地看百度贴吧。",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "akacjz",
   "license": "UNLICENSED",
   "repository": {
