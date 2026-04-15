@@ -352,15 +352,35 @@
           "default": true,
           "description": "是否在帖子阅读页显示图片。"
         },
+        "tieba.density": {
+          "type": "string",
+          "enum": [
+            "comfortable",
+            "compact"
+          ],
+          "default": "comfortable",
+          "description": "阅读排版密度。comfortable 为舒展排版，compact 为紧凑排版。"
+        },
+        "tieba.contrast": {
+          "type": "string",
+          "enum": [
+            "soft",
+            "normal"
+          ],
+          "default": "soft",
+          "description": "阅读视觉对比。soft 为柔和对比，normal 为清晰对比。"
+        },
         "tieba.compactMode": {
           "type": "boolean",
           "default": false,
-          "description": "是否启用紧凑阅读模式。"
+          "description": "是否启用紧凑阅读模式。",
+          "deprecationMessage": "已被 tieba.density 替代。true 等价于 compact。"
         },
         "tieba.lowContrastMode": {
           "type": "boolean",
           "default": true,
-          "description": "是否降低阅读页的视觉存在感。"
+          "description": "是否降低阅读页的视觉存在感。",
+          "deprecationMessage": "已被 tieba.contrast 替代。true 等价于 soft。"
         },
         "tieba.themePreset": {
           "type": "string",
@@ -370,7 +390,7 @@
             "document"
           ],
           "default": "default",
-          "description": "阅读主题预设。default 为当前默认样式，minimal 为极简，document 为文档风。"
+          "description": "阅读主题预设。default 为默认，minimal 为极简，document 为文档风。"
         },
         "tieba.cacheMinutes": {
           "type": "number",

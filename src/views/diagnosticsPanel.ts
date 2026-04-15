@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
+import { formatReadingThemeSummary, getReadingContrastOption, getReadingDensityOption, getThemePresetOption } from "../theme/themeRegistry";
 import { TiebaDiagnosticsReport, TiebaService } from "../services/tiebaService";
 import { getTiebaHumanStatus } from "../statusPresentation";
+import { renderStaticThemedWebviewPage } from "./themedWebview";
 
 export class DiagnosticsPanel {
   private panel?: vscode.WebviewPanel;
@@ -12,6 +14,11 @@ export class DiagnosticsPanel {
       }),
       this.service.onDidChange(() => {
         void this.render();
+      }),
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration("tieba")) {
+          void this.render();
+        }
       })
     );
   }
@@ -50,67 +57,14 @@ export class DiagnosticsPanel {
   }
 
   private getHtml(webview: vscode.Webview, report: TiebaDiagnosticsReport): string {
-    const csp = `default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline';`;
     const human = getTiebaHumanStatus(report);
-    return `<!DOCTYPE html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="${csp}" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tieba 环境诊断</title>
-    <style>
-      :root {
-        color-scheme: light dark;
-      }
-      body {
-        margin: 0;
-        padding: 20px;
-        font: 13px/1.6 var(--vscode-font-family);
-        color: var(--vscode-foreground);
-        background: var(--vscode-editor-background);
-      }
-      h1, h2 {
-        margin: 0 0 12px;
-        font-weight: 600;
-      }
-      h2 {
-        margin-top: 24px;
-      }
-      .subtle {
-        color: var(--vscode-descriptionForeground);
-      }
-      .grid {
-        display: grid;
-        gap: 12px;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      }
-      .card {
-        border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-        border-radius: 8px;
-        padding: 12px 14px;
-        background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-foreground) 8%);
-      }
-      .label {
-        display: block;
-        margin-bottom: 4px;
-        color: var(--vscode-descriptionForeground);
-      }
-      .value {
-        font-size: 14px;
-        font-weight: 600;
-      }
-      ul {
-        margin: 0;
-        padding-left: 18px;
-      }
-      code {
-        font-family: var(--vscode-editor-font-family);
-        font-size: 12px;
-      }
-    </style>
-  </head>
-  <body>
+    return renderStaticThemedWebviewPage({
+      context: this.context,
+      webview,
+      title: "Tieba 环境诊断",
+      settings: report.settings,
+      pageId: "diagnostics",
+      body: `
     <h1>Tieba 环境诊断</h1>
     <p class="subtle">这页只回答两件事：现在能不能稳定看，以及当前到底走的是哪条数据链路。</p>
 
@@ -145,9 +99,11 @@ export class DiagnosticsPanel {
 
     <h2>当前设置</h2>
     <ul>
+      <li>阅读样式：${this.escapeHtml(formatReadingThemeSummary(report.settings))}</li>
+      <li>主题预设：${this.escapeHtml(getThemePresetOption(report.settings.themePreset).label)}</li>
+      <li>阅读密度：${this.escapeHtml(getReadingDensityOption(report.settings.density).label)}</li>
+      <li>视觉对比：${this.escapeHtml(getReadingContrastOption(report.settings.contrast).label)}</li>
       <li>图片显示：${report.settings.showImages ? "开启" : "关闭"}</li>
-      <li>紧凑模式：${report.settings.compactMode ? "开启" : "关闭"}</li>
-      <li>低存在感模式：${report.settings.lowContrastMode ? "开启" : "关闭"}</li>
       <li>缓存分钟数：${report.settings.cacheMinutes}</li>
       <li>打开帖子方式：${report.settings.openThreadMode}</li>
       <li>浏览器兜底：${report.settings.fallbackToBrowser ? "开启" : "关闭"}</li>
@@ -168,8 +124,8 @@ export class DiagnosticsPanel {
     <ul>
       ${this.renderSuggestionList(report)}
     </ul>
-  </body>
-</html>`;
+      `
+    });
   }
 
   private renderCard(label: string, value: string, description?: string): string {

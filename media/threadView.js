@@ -1,6 +1,8 @@
 (function () {
   const vscode = acquireVsCodeApi();
   const app = document.getElementById("app");
+  const bootstrap = window.__TIEBA_BOOTSTRAP__ || {};
+  const bootstrapSettings = bootstrap.settings || {};
 
   let state = {
     loading: true,
@@ -16,9 +18,10 @@
     showShortcutHelp: false,
     showBackToTop: false,
     settings: {
-      showImages: true,
-      compactMode: false,
-      lowContrastMode: true
+      showImages: bootstrapSettings.showImages !== false,
+      themePreset: bootstrapSettings.themePreset || "default",
+      density: bootstrapSettings.density || (bootstrapSettings.compactMode ? "compact" : "comfortable"),
+      contrast: bootstrapSettings.contrast || (bootstrapSettings.lowContrastMode === false ? "normal" : "soft")
     }
   };
 
@@ -38,8 +41,8 @@
   function applyBodySettings() {
     document.body.classList.toggle("hide-images", !state.settings.showImages);
     document.body.dataset.themePreset = state.settings.themePreset || "default";
-    document.body.classList.toggle("compact-mode", !!state.settings.compactMode);
-    document.body.classList.toggle("low-contrast-mode", !!state.settings.lowContrastMode);
+    document.body.dataset.density = state.settings.density || (state.settings.compactMode ? "compact" : "comfortable");
+    document.body.dataset.contrast = state.settings.contrast || (state.settings.lowContrastMode === false ? "normal" : "soft");
   }
 
   function getVisiblePosts() {
@@ -481,7 +484,11 @@
         </header>
         ${content}
         ${renderShortcutHelp()}
-        ${state.showBackToTop ? '<button class="back-to-top" data-action="backToTop">回到顶部</button>' : ""}
+        ${
+          state.showBackToTop
+            ? '<button class="back-to-top" data-action="backToTop" aria-label="回到顶部" title="回到顶部"><span aria-hidden="true">↑</span></button>'
+            : ""
+        }
         ${state.lightboxSrc
           ? `<div class="lightbox">
               <div class="lightbox-backdrop" data-action="closeLightbox"></div>

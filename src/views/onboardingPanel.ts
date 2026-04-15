@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
-import { ReadingSession } from "../models/tieba";
+import { ReadingSession, TiebaSettings } from "../models/tieba";
 import { TiebaDiagnosticsReport, TiebaService } from "../services/tiebaService";
 import { getTiebaHumanStatus } from "../statusPresentation";
+import { renderStaticThemedWebviewPage } from "./themedWebview";
 
 interface OnboardingPanelOpenOptions {
   preserveFocus?: boolean;
@@ -79,135 +80,35 @@ export class OnboardingPanel {
     const report = await this.service.getDiagnosticsReport();
     const followedForumsCount = this.service.listForums().length;
     const readingSession = this.service.getReadingSession();
-    this.panel.webview.html = this.getHtml(this.panel.webview, report, followedForumsCount, readingSession);
+    this.panel.webview.html = this.getHtml(
+      this.panel.webview,
+      this.service.getSettings(),
+      report,
+      followedForumsCount,
+      readingSession
+    );
   }
 
   private getHtml(
     webview: vscode.Webview,
+    settings: TiebaSettings,
     report: TiebaDiagnosticsReport,
     followedForumsCount: number,
     readingSession?: ReadingSession
   ): string {
-    const csp = `default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline';`;
     const summary = this.buildSummary(report, followedForumsCount, readingSession);
     const primaryActions = this.buildPrimaryActions(report, followedForumsCount, readingSession);
     const secondaryActions = this.buildSecondaryActions(report, followedForumsCount, readingSession);
     const statusItems = this.buildStatusItems(report, readingSession);
     const quickStart = this.buildQuickStartLine(report, followedForumsCount, readingSession);
 
-    return `<!DOCTYPE html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="${csp}" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tieba 首页</title>
-    <style>
-      :root {
-        color-scheme: light dark;
-      }
-      body {
-        margin: 0;
-        padding: 24px;
-        font: 13px/1.65 var(--vscode-font-family);
-        color: var(--vscode-foreground);
-        background: var(--vscode-editor-background);
-      }
-      h1, h2 {
-        margin: 0 0 12px;
-        font-weight: 600;
-      }
-      h2 {
-        margin-top: 24px;
-        font-size: 15px;
-      }
-      p {
-        margin: 0;
-      }
-      .subtle {
-        color: var(--vscode-descriptionForeground);
-      }
-      .hero {
-        margin-bottom: 20px;
-        padding: 16px 18px;
-        border: 1px solid var(--vscode-panel-border);
-        border-radius: 12px;
-        background: color-mix(in srgb, var(--vscode-editor-background) 94%, var(--vscode-focusBorder) 6%);
-      }
-      .hero p {
-        margin-top: 8px;
-      }
-      .actions {
-        display: grid;
-        gap: 12px;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        margin-top: 16px;
-      }
-      .action-card {
-        display: block;
-        padding: 14px 15px;
-        border-radius: 10px;
-        border: 1px solid var(--vscode-panel-border);
-        color: inherit;
-        text-decoration: none;
-        background: color-mix(in srgb, var(--vscode-editor-background) 96%, var(--vscode-foreground) 4%);
-      }
-      .action-card:hover {
-        border-color: var(--vscode-focusBorder);
-      }
-      .action-title {
-        display: block;
-        margin-bottom: 6px;
-        font-size: 14px;
-        font-weight: 600;
-      }
-      .action-description {
-        color: var(--vscode-descriptionForeground);
-      }
-      .secondary-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 14px;
-        margin-top: 14px;
-      }
-      .secondary-actions a {
-        color: var(--vscode-textLink-foreground);
-        text-decoration: none;
-      }
-      .status-grid {
-        display: grid;
-        gap: 12px;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      }
-      .status-card {
-        padding: 12px 14px;
-        border-radius: 10px;
-        border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-        background: color-mix(in srgb, var(--vscode-editor-background) 97%, var(--vscode-foreground) 3%);
-      }
-      .status-label {
-        display: block;
-        margin-bottom: 6px;
-        color: var(--vscode-descriptionForeground);
-      }
-      .status-value {
-        display: block;
-        margin-bottom: 6px;
-        font-size: 14px;
-        font-weight: 600;
-      }
-      .quick-start {
-        margin-top: 22px;
-        padding-top: 14px;
-        border-top: 1px solid var(--vscode-panel-border);
-      }
-      code {
-        font-family: var(--vscode-editor-font-family);
-        font-size: 12px;
-      }
-    </style>
-  </head>
-  <body>
+    return renderStaticThemedWebviewPage({
+      context: this.context,
+      webview,
+      title: "Tieba 首页",
+      settings,
+      pageId: "onboarding",
+      body: `
     <section class="hero">
       <h1>Tieba 首页</h1>
       <strong>${this.escapeHtml(summary.title)}</strong>
@@ -230,8 +131,8 @@ export class OnboardingPanel {
     <p class="quick-start subtle">
       ${this.escapeHtml(quickStart)}
     </p>
-  </body>
-</html>`;
+      `
+    });
   }
 
   private buildSummary(

@@ -113,9 +113,13 @@ export interface ReadingSession {
 }
 
 export type TiebaThemePreset = "default" | "minimal" | "document";
+export type TiebaReadingDensity = "comfortable" | "compact";
+export type TiebaReadingContrast = "soft" | "normal";
 
 export interface TiebaSettings {
   showImages: boolean;
+  density: TiebaReadingDensity;
+  contrast: TiebaReadingContrast;
   compactMode: boolean;
   lowContrastMode: boolean;
   themePreset: TiebaThemePreset;

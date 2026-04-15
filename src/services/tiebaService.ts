@@ -191,6 +191,18 @@ export class TiebaService {
     return this.getSettings();
   }
 
+  async updateReadingDensity(nextValue: TiebaSettings["density"]): Promise<TiebaSettings> {
+    await this.settingsStore.updateDensity(nextValue);
+    this.changeEmitter.fire();
+    return this.getSettings();
+  }
+
+  async updateReadingContrast(nextValue: TiebaSettings["contrast"]): Promise<TiebaSettings> {
+    await this.settingsStore.updateContrast(nextValue);
+    this.changeEmitter.fire();
+    return this.getSettings();
+  }
+
   async addForum(forumName: string): Promise<ForumSubscription> {
     const forum = await this.forumsStore.add(forumName);
     this.changeEmitter.fire();

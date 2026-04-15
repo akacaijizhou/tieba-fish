@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { ForumSubscription, ForumThreadPage, ThreadSummary } from "../models/tieba";
 import { shouldOfferAiotiebaInstall, TiebaError } from "../services/errors";
 import { TiebaService } from "../services/tiebaService";
+import { buildThemedBodyAttributes } from "./themedWebview";
 
 interface ForumPanelState {
   forumName: string;
@@ -199,6 +200,7 @@ export class ForumPanelManager {
     const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "common.css"));
     const nonce = createNonce();
     const csp = `default-src 'none'; img-src ${webview.cspSource} https: http: data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';`;
+    const settings = this.service.getSettings();
 
     return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -209,10 +211,10 @@ export class ForumPanelManager {
     <link rel="stylesheet" href="${styleUri}" />
     <title>${forumName}吧</title>
   </head>
-  <body data-page="forum">
+  <body ${buildThemedBodyAttributes(settings, { "data-page": "forum" })}>
     <div id="app"></div>
     <script nonce="${nonce}">
-      window.__TIEBA_BOOTSTRAP__ = ${JSON.stringify({ forumName })};
+      window.__TIEBA_BOOTSTRAP__ = ${JSON.stringify({ forumName, settings })};
     </script>
     <script nonce="${nonce}" src="${scriptUri}"></script>
   </body>

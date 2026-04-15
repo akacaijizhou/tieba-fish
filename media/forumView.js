@@ -2,6 +2,7 @@
   const vscode = acquireVsCodeApi();
   const app = document.getElementById("app");
   const bootstrap = window.__TIEBA_BOOTSTRAP__ || {};
+  const bootstrapSettings = bootstrap.settings || {};
 
   let state = {
     forumName: bootstrap.forumName || "",
@@ -12,9 +13,9 @@
     loadingMessage: "正在打开贴吧...",
     error: null,
     settings: {
-      themePreset: "default",
-      compactMode: false,
-      lowContrastMode: true
+      themePreset: bootstrapSettings.themePreset || "default",
+      density: bootstrapSettings.density || (bootstrapSettings.compactMode ? "compact" : "comfortable"),
+      contrast: bootstrapSettings.contrast || (bootstrapSettings.lowContrastMode === false ? "normal" : "soft")
     }
   };
 
@@ -33,8 +34,8 @@
 
   function applyBodySettings() {
     document.body.dataset.themePreset = state.settings.themePreset || "default";
-    document.body.classList.toggle("compact-mode", !!state.settings.compactMode);
-    document.body.classList.toggle("low-contrast-mode", !!state.settings.lowContrastMode);
+    document.body.dataset.density = state.settings.density || (state.settings.compactMode ? "compact" : "comfortable");
+    document.body.dataset.contrast = state.settings.contrast || (state.settings.lowContrastMode === false ? "normal" : "soft");
   }
 
   function renderBadges(thread) {

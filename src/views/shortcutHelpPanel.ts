@@ -1,14 +1,27 @@
 import * as vscode from "vscode";
+import { TiebaService } from "../services/tiebaService";
+import { renderStaticThemedWebviewPage } from "./themedWebview";
 
 export class ShortcutHelpPanel {
   private panel?: vscode.WebviewPanel;
 
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  constructor(private readonly context: vscode.ExtensionContext, private readonly service: TiebaService) {
+    this.context.subscriptions.push(
+      this.service.onDidChange(() => {
+        void this.render();
+      }),
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration("tieba")) {
+          void this.render();
+        }
+      })
+    );
+  }
 
   async open(): Promise<void> {
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Active);
-      this.panel.webview.html = this.getHtml(this.panel.webview);
+      await this.render();
       return;
     }
 
@@ -25,79 +38,25 @@ export class ShortcutHelpPanel {
       this.panel = undefined;
     });
 
+    await this.render();
+  }
+
+  private async render(): Promise<void> {
+    if (!this.panel) {
+      return;
+    }
+
     this.panel.webview.html = this.getHtml(this.panel.webview);
   }
 
   private getHtml(webview: vscode.Webview): string {
-    const csp = `default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline';`;
-
-    return `<!DOCTYPE html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="${csp}" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tieba 快捷键帮助</title>
-    <style>
-      :root {
-        color-scheme: light dark;
-      }
-      body {
-        margin: 0;
-        padding: 22px;
-        font: 13px/1.65 var(--vscode-font-family);
-        color: var(--vscode-foreground);
-        background: var(--vscode-editor-background);
-      }
-      h1, h2 {
-        margin: 0 0 12px;
-        font-weight: 600;
-      }
-      h2 {
-        margin-top: 22px;
-        font-size: 15px;
-      }
-      p {
-        margin: 0 0 8px;
-        color: var(--vscode-descriptionForeground);
-      }
-      .grid {
-        display: grid;
-        gap: 12px;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      }
-      .card {
-        border: 1px solid var(--vscode-panel-border);
-        border-radius: 10px;
-        padding: 12px 14px;
-        background: color-mix(in srgb, var(--vscode-editor-background) 96%, var(--vscode-foreground) 4%);
-      }
-      .item + .item {
-        margin-top: 10px;
-        padding-top: 10px;
-        border-top: 1px solid var(--vscode-panel-border);
-      }
-      .key {
-        display: inline-flex;
-        align-items: center;
-        min-height: 22px;
-        padding: 0 8px;
-        border-radius: 999px;
-        border: 1px solid var(--vscode-panel-border);
-        background: color-mix(in srgb, var(--vscode-editor-background) 90%, var(--vscode-textLink-foreground) 10%);
-        font-weight: 600;
-      }
-      .title {
-        display: block;
-        margin-top: 6px;
-        font-weight: 600;
-      }
-      .desc {
-        color: var(--vscode-descriptionForeground);
-      }
-    </style>
-  </head>
-  <body>
+    return renderStaticThemedWebviewPage({
+      context: this.context,
+      webview,
+      title: "Tieba 快捷键帮助",
+      settings: this.service.getSettings(),
+      pageId: "shortcuts",
+      body: `
     <h1>Tieba 快捷键帮助</h1>
     <p>这些快捷键里，<code>Ctrl+Alt+X</code> 是全局可用的；其余主要在帖子阅读页里使用。</p>
 
@@ -126,8 +85,8 @@ export class ShortcutHelpPanel {
         ${this.renderItem("Esc", "关闭大图或帮助", "优先关闭图片预览或快捷键帮助。")}
       </section>
     </div>
-  </body>
-</html>`;
+      `
+    });
   }
 
   private renderItem(key: string, title: string, description: string): string {

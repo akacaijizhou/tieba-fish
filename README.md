@@ -1,6 +1,6 @@
 # Tieba Fish
 
-一个面向 VS Code 摸鱼阅读场景的贴吧插件。
+一个面向 VS Code 摸鱼阅读场景的贴吧阅读插件。
 
 Tieba Fish 的定位不是完整贴吧客户端，而是把“上班摸鱼看帖”这件事收成更适合编辑器环境的一层阅读体验。  
 它保留常用入口、正文阅读、翻页和临时隐藏这些高频动作，尽量减少网页式浏览的干扰。
@@ -30,14 +30,14 @@ Tieba Fish 的定位不是完整贴吧客户端，而是把“上班摸鱼看帖
 
 下面这张图是当前主界面的实际使用状态：左侧管理内容入口，右侧阅读正文。
 
-![Tieba Fish 日常阅读视图](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/C.png)
+![Tieba Fish 日常阅读视图](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/resources/screenshots/C.png)
 
 ## 核心能力
 
 ### 内容入口
 
 - `关注吧`：手动添加或同步自己常看的吧
-- `最近`：显示最近一次打开的关注吧列表
+- `最近`：显示最近一次打开的吧的帖子列表
 - `收藏`：保存想回看的帖子
 - `历史`：保存最近打开过的帖子
 
@@ -45,7 +45,7 @@ Tieba Fish 的定位不是完整贴吧客户端，而是把“上班摸鱼看帖
 
 - 以正文为主的帖子排版
 - `只看楼主`
-- 楼中楼预览、展开和分页
+- 楼中楼预览；在结构化链路下支持展开和分页
 - 图片缩略图和大图预览
 - 底部跳页
 - 回到顶部
@@ -60,26 +60,24 @@ Tieba Fish 的定位不是完整贴吧客户端，而是把“上班摸鱼看帖
 
 ## 功能预览
 
-
 ### 安装 aiotieba
 
 如果系统已经有 Python，但还没有 `aiotieba`，插件内可以直接补齐。
+首页和失败态都可以触发安装；安装成功后，当前页面会自动重新加载。
 
-![安装 aiotieba 引导](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/D.png)
+![安装 aiotieba 引导](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/resources/screenshots/D.png)
 
 ### 首页
 
 首页负责给出当前状态和下一步动作。
 
-![Tieba 首页](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/A.png)
+![Tieba 首页](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/resources/screenshots/A.png)
 
 ### 登录态导入
 
 推荐直接导入完整贴吧 Cookie。插件会自动提取所需字段，并用于阅读和同步关注吧。
 
-![贴吧 Cookie 获取示例](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/B.png)
-
-
+![贴吧 Cookie 获取示例](https://raw.githubusercontent.com/akacaijizhou/tieba-fish/main/resources/screenshots/B.png)
 
 ## 安装方式
 
@@ -88,6 +86,7 @@ Tieba Fish 的定位不是完整贴吧客户端，而是把“上班摸鱼看帖
 在 VS Code 扩展市场搜索：
 
 - `Tieba Fish`
+- `摸鱼`
 
 ### VSIX 安装
 
@@ -110,7 +109,8 @@ Tieba Fish 的定位不是完整贴吧客户端，而是把“上班摸鱼看帖
 
 ## 登录态说明
 
-当前最稳的方式是直接导入完整 Cookie。原因很简单：
+如果只是先试读，可以先不导入登录态。  
+如果你要同步关注吧，或者希望结构化链路更稳定，当前最稳的方式仍然是直接导入完整 Cookie。原因很简单：
 
 - 阅读链路更稳定
 - 同步关注吧需要完整登录态
@@ -142,7 +142,7 @@ Tieba Fish 的定位不是完整贴吧客户端，而是把“上班摸鱼看帖
 ### 最近
 
 `最近` 不是全站推荐流。  
-它表示最近一次打开的关注吧列表，适合沿着当前阅读上下文继续往下看。
+它表示最近一次打开的吧的帖子列表，适合沿着当前阅读上下文继续往下看。
 
 ### 收藏
 
@@ -177,7 +177,8 @@ Tieba Fish 的定位不是完整贴吧客户端，而是把“上班摸鱼看帖
 - 回到顶部
 - `?` 打开快捷键帮助
 
-如果当前走的是网页回退链路，楼中楼会保留预览，但会明确标成 `仅预览`，需要完整展开时可以直接用：
+如果当前走的是网页回退链路，楼中楼会保留预览，但会明确标成 `仅预览`。  
+需要完整展开时，可以直接用：
 
 - `VS Code 浏览器`
 - 系统浏览器
@@ -187,7 +188,7 @@ Tieba Fish 的定位不是完整贴吧客户端，而是把“上班摸鱼看帖
 打开方式：
 
 - 执行 `阅读: 快捷键帮助`
-- 在帖子页直接按 `shift + ?`
+- 在帖子页直接按 `?`
 
 当前主要快捷键：
 
@@ -212,12 +213,20 @@ Tieba Fish 的定位不是完整贴吧客户端，而是把“上班摸鱼看帖
 - `极简`
 - `文档风`
 
-它们分别对应常规阅读、低存在感界面和长文阅读场景。
+它们分别对应常规阅读、低打扰摸鱼和长文阅读场景。
 
-另外在扩展设置里还可以直接控制：
+如果你要做更细的高级调整，也可以在扩展设置里直接控制：
 
-- `tieba.compactMode`：进一步压缩阅读密度
-- `tieba.lowContrastMode`：弱化分隔线、按钮和反馈条的视觉存在感
+- `tieba.themePreset`：切换主题预设
+- `tieba.density`：调整阅读密度
+- `tieba.contrast`：调整视觉对比
+
+兼容旧版本时，扩展仍会读取：
+
+- `tieba.compactMode`
+- `tieba.lowContrastMode`
+
+但这两个布尔设置已经只是兼容层，后续建议直接使用新的三轴配置。
 
 ## 老板模式
 
@@ -280,6 +289,14 @@ Ctrl+Alt+X
 
 在网页回退链路下，帖子正文仍然可以看，但楼中楼通常只保留预览，不保证能完整展开。
 
+### 没安装 aiotieba 时会怎样
+
+如果本机已经有 Python，但还没有安装 `aiotieba`：
+
+- 首页会主动提示安装
+- 吧页或帖子页的失败态里也会提供 `安装 aiotieba`
+- 安装成功后，当前页面会自动重新加载，不需要手动再刷新
+
 ### 没有 Python 能不能用
 
 可以直接开始用。  
@@ -304,7 +321,7 @@ Ctrl+Alt+X
 也可以手动执行：
 
 ```powershell
-python -m pip install aiotieba
+python -m pip install --upgrade --only-binary=:all: aiotieba
 ```
 
 安装后重开 VS Code，或者重新打开 `维护: 环境诊断`。
@@ -312,7 +329,7 @@ python -m pip install aiotieba
 ## 已知边界
 
 - 贴吧本身存在安全校验，个别页面可能仍会失败或回退
-- `最近` 不是推荐流，而是最近一次打开的关注吧数据
+- `最近` 不是推荐流，而是最近一次打开的吧的帖子列表
 - 网页回退链路下，楼中楼通常只展示预览
 - 部分能力依赖完整登录态和本机 Python 环境
 

@@ -7,3 +7,4 @@ README_mock.md
 .tmp_*
 tsconfig.json
 **/*.map
+resources/screenshots/**

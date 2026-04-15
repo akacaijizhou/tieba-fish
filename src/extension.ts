@@ -1,9 +1,18 @@
 import * as vscode from "vscode";
-import { ForumSubscription, OpenTarget, ThreadSummary, TiebaThemePreset } from "./models/tieba";
+import {
+  ForumSubscription,
+  OpenTarget,
+  ThreadSummary,
+  TiebaThemePreset
+} from "./models/tieba";
 import { TiebaError } from "./services/errors";
 import { ForumNameSuggestion, TiebaService } from "./services/tiebaService";
 import { getTiebaHumanStatus } from "./statusPresentation";
 import { STORAGE_KEYS } from "./storage/storageKeys";
+import {
+  getThemePresetOption,
+  THEME_PRESET_OPTIONS
+} from "./theme/themeRegistry";
 import { BossFilesProvider } from "./views/bossFilesProvider";
 import { BossModeManager } from "./views/bossModeManager";
 import { DiagnosticsPanel } from "./views/diagnosticsPanel";
@@ -37,7 +46,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const bossMode = new BossModeManager(context, forumPanels, threadPanels);
   const diagnosticsPanel = new DiagnosticsPanel(context, service);
   const onboardingPanel = new OnboardingPanel(context, service);
-  const shortcutHelpPanel = new ShortcutHelpPanel(context);
+  const shortcutHelpPanel = new ShortcutHelpPanel(context, service);
   const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10);
   const themePresetStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 9);
   const resetOnboardingStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 9);
@@ -60,9 +69,9 @@ export function activate(context: vscode.ExtensionContext): void {
     const report = await service.getDiagnosticsReport();
     statusBarItem.text = buildTiebaStatusBarText(report);
     statusBarItem.tooltip = buildTiebaStatusBarTooltip(report);
-    const themePreset = service.getSettings().themePreset;
-    themePresetStatusBarItem.text = `$(symbol-color) ${getThemePresetLabel(themePreset)}`;
-    themePresetStatusBarItem.tooltip = `当前主题：${getThemePresetLabel(themePreset)}\n点击切换阅读主题。`;
+    const settings = service.getSettings();
+    themePresetStatusBarItem.text = `$(symbol-color) 主题: ${getThemePresetOption(settings.themePreset).label}`;
+    themePresetStatusBarItem.tooltip = `当前主题：${getThemePresetOption(settings.themePreset).label}\n点击切换主题预设。`;
   };
 
   let aiotiebaInstallPromptInFlight = false;
@@ -482,30 +491,21 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("tieba.selectThemePreset", async () => {
       const current = service.getSettings().themePreset;
       const picked = await vscode.window.showQuickPick(
-        [
-          {
-            label: "默认",
-            description: "保持当前这套样式",
-            themePreset: "default" as TiebaThemePreset
-          },
-          {
-            label: "极简",
-            description: "更紧凑、更弱化的阅读样式",
-            themePreset: "minimal" as TiebaThemePreset
-          },
-          {
-            label: "文档风",
-            description: "更像文档阅读，正文更平和",
-            themePreset: "document" as TiebaThemePreset
-          }
-        ],
+        THEME_PRESET_OPTIONS.map((option) => ({
+          label: option.label,
+          description: option.description,
+          detail: option.value === current ? "当前主题" : undefined,
+          themePreset: option.value
+        })),
         {
-          title: "选择阅读主题",
-          placeHolder: `当前：${getThemePresetLabel(current)}`
+          title: "切换主题预设",
+          placeHolder: `当前：${getThemePresetOption(current).label}`,
+          matchOnDescription: true,
+          matchOnDetail: true
         }
       );
 
-      if (!picked || picked.themePreset === current) {
+      if (!picked?.themePreset || picked.themePreset === current) {
         return;
       }
 
@@ -513,7 +513,7 @@ export function activate(context: vscode.ExtensionContext): void {
       forumPanels.broadcastSettings();
       threadPanels.broadcastSettings();
       void refreshStatusBar();
-      void vscode.window.showInformationMessage(`阅读主题已切换为“${getThemePresetLabel(picked.themePreset)}”。`);
+      void vscode.window.showInformationMessage(`主题预设已切换为“${getThemePresetOption(picked.themePreset).label}”。`);
     }),
 
     vscode.commands.registerCommand("tieba.openShortcutHelp", async () => {
@@ -865,16 +865,6 @@ function buildTiebaStatusBarTooltip(report: Awaited<ReturnType<TiebaService["get
   return markdown;
 }
 
-function getThemePresetLabel(themePreset: TiebaThemePreset): string {
-  switch (themePreset) {
-    case "minimal":
-      return "主题: 极简";
-    case "document":
-      return "主题: 文档风";
-    default:
-      return "主题: 默认";
-  }
-}
 
 function shouldAutoOpenOnboarding(service: TiebaService, diagnostics: Awaited<ReturnType<TiebaService["getDiagnosticsReport"]>>): boolean {
   void diagnostics;
