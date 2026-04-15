@@ -65,10 +65,49 @@ export function activate(context: vscode.ExtensionContext): void {
     themePresetStatusBarItem.tooltip = `当前主题：${getThemePresetLabel(themePreset)}\n点击切换阅读主题。`;
   };
 
+  let aiotiebaInstallPromptInFlight = false;
+  const maybePromptAiotiebaInstallFromOnboarding = async (): Promise<void> => {
+    if (aiotiebaInstallPromptInFlight) {
+      return;
+    }
+
+    if (context.globalState.get<boolean>(STORAGE_KEYS.aiotiebaInstallPromptShown, false)) {
+      return;
+    }
+
+    const diagnostics = await service.getDiagnosticsReport();
+    if (!diagnostics.bridge.canInstallAiotieba) {
+      return;
+    }
+
+    aiotiebaInstallPromptInFlight = true;
+    try {
+      await context.globalState.update(STORAGE_KEYS.aiotiebaInstallPromptShown, true);
+      const action = await vscode.window.showInformationMessage(
+        "检测到本机已经有 Python，但还没有安装 aiotieba。现在安装后，首页和阅读页都会优先走更稳的结构化链路。",
+        "现在安装",
+        "环境诊断",
+        "稍后"
+      );
+
+      if (action === "现在安装") {
+        await vscode.commands.executeCommand("tieba.installAiotieba");
+        return;
+      }
+
+      if (action === "环境诊断") {
+        await vscode.commands.executeCommand("tieba.openDiagnostics");
+      }
+    } finally {
+      aiotiebaInstallPromptInFlight = false;
+    }
+  };
+
   const openOnboarding = async (preserveFocus = false): Promise<void> => {
     await context.globalState.update(STORAGE_KEYS.onboardingSeen, true);
     await context.globalState.update(STORAGE_KEYS.onboardingForceNextOpen, false);
     await onboardingPanel.open({ preserveFocus });
+    await maybePromptAiotiebaInstallFromOnboarding();
   };
 
   void refreshStatusBar();
@@ -481,7 +520,7 @@ export function activate(context: vscode.ExtensionContext): void {
       await shortcutHelpPanel.open();
     }),
 
-    vscode.commands.registerCommand("tieba.installAiotieba", async () => {
+    vscode.commands.registerCommand("tieba.installAiotieba", async (): Promise<boolean> => {
       try {
         await vscode.window.withProgress(
           {
@@ -495,12 +534,14 @@ export function activate(context: vscode.ExtensionContext): void {
         );
 
         void vscode.window.showInformationMessage("aiotieba 安装完成。现在会优先走结构化数据主路径。");
+        return true;
       } catch (error) {
         const message = error instanceof Error ? error.message : "安装 aiotieba 失败。";
         const action = await vscode.window.showErrorMessage(message, "打开环境诊断");
         if (action === "打开环境诊断") {
           await vscode.commands.executeCommand("tieba.openDiagnostics");
         }
+        return false;
       }
     }),
 
@@ -523,6 +564,7 @@ export function activate(context: vscode.ExtensionContext): void {
       await service.resetAllLocalState();
       await context.globalState.update(STORAGE_KEYS.onboardingSeen, false);
       await context.globalState.update(STORAGE_KEYS.onboardingForceNextOpen, true);
+      await context.globalState.update(STORAGE_KEYS.aiotiebaInstallPromptShown, false);
       await vscode.commands.executeCommand("workbench.action.reloadWindow");
     }),
 

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { ForumSubscription, ForumThreadPage, ThreadSummary } from "../models/tieba";
-import { TiebaError } from "../services/errors";
+import { shouldOfferAiotiebaInstall, TiebaError } from "../services/errors";
 import { TiebaService } from "../services/tiebaService";
 
 interface ForumPanelState {
@@ -86,6 +86,22 @@ export class ForumPanelManager {
         case "openInSimpleBrowser":
           await vscode.commands.executeCommand("tieba.openInSimpleBrowser", { forumName: forum.forumName });
           break;
+        case "installAiotieba": {
+          const installed = await vscode.commands.executeCommand<boolean>("tieba.installAiotieba");
+          if (installed) {
+            const currentSession = this.sessions.get(forum.forumName);
+            await this.loadForum(
+              panel,
+              {
+                forumName: forum.forumName,
+                page: currentSession?.page ?? page
+              },
+              true,
+              "安装完成，正在刷新帖子列表..."
+            );
+          }
+          break;
+        }
         default:
           break;
       }
@@ -169,6 +185,7 @@ export class ForumPanelManager {
           page: state.page,
           message: tiebaError.message,
           code: tiebaError.code,
+          showInstallAiotieba: shouldOfferAiotiebaInstall(tiebaError),
           sourceUrl: this.service.getForumUrl(state.forumName, state.page),
           fallbackToBrowser: this.service.getSettings().fallbackToBrowser,
           settings: this.service.getSettings()

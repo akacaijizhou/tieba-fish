@@ -115,6 +115,7 @@
         <div class="hint">${escapeHtml(state.error.message)}</div>
         <div class="toolbar">
           <button class="button" data-action="refresh">重试</button>
+          ${state.error?.showInstallAiotieba ? '<button class="button" data-action="installAiotieba">安装 aiotieba</button>' : ""}
           <button class="button" data-action="browser">VS Code 浏览器</button>
           <button class="button" data-action="external">系统浏览器</button>
         </div>
@@ -163,6 +164,9 @@
         const action = element.getAttribute("data-action");
         if (action === "refresh") {
           send("refreshForum", { forumName: state.forumName, page: state.page });
+        }
+        if (action === "installAiotieba") {
+          send("installAiotieba");
         }
         if (action === "browser") {
           send("openInSimpleBrowser");

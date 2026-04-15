@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { ThreadSummary } from "../models/tieba";
-import { TiebaError } from "../services/errors";
+import { shouldOfferAiotiebaInstall, TiebaError } from "../services/errors";
 import { TiebaService } from "../services/tiebaService";
 
 interface ThreadPanelState {
@@ -219,6 +219,24 @@ export class ThreadPanelManager {
         case "openInSimpleBrowser":
           await vscode.commands.executeCommand("tieba.openInSimpleBrowser", thread);
           break;
+        case "installAiotieba": {
+          const installed = await vscode.commands.executeCommand<boolean>("tieba.installAiotieba");
+          if (installed) {
+            const currentSession = this.sessions.get(thread.threadId);
+            await this.loadThread(
+              panel,
+              {
+                thread: currentSession?.thread ?? thread,
+                page: currentSession?.page ?? page,
+                onlyLz: currentSession?.onlyLz ?? onlyLz,
+                lastFullPageBeforeOnlyLz: currentSession?.lastFullPageBeforeOnlyLz ?? lastFullPageBeforeOnlyLz
+              },
+              true,
+              "安装完成，正在重新加载帖子..."
+            );
+          }
+          break;
+        }
         default:
           break;
       }
@@ -320,6 +338,7 @@ export class ThreadPanelManager {
           thread: state.thread,
           message: tiebaError.message,
           code: tiebaError.code,
+          showInstallAiotieba: shouldOfferAiotiebaInstall(tiebaError),
           settings: this.service.getSettings()
         }
       });
