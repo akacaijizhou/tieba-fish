@@ -130,7 +130,7 @@ export class DiagnosticsPanel {
       ${this.renderCard("Python 命令", report.bridge.pythonPath)}
       ${this.renderCard("Python 运行时", report.bridge.pythonAvailable ? `可用${report.bridge.pythonVersion ? ` · ${report.bridge.pythonVersion}` : ""}` : "不可用")}
       ${this.renderCard("aiotieba", report.bridge.available ? "已安装" : "未安装")}
-      ${this.renderCard("导入方式", report.bridge.loadMode === "local" ? "项目内 aiotieba-master" : report.bridge.loadMode === "installed" ? "已安装 Python 包" : "未知")}
+      ${this.renderCard("导入方式", report.bridge.loadMode === "installed" ? "已安装 Python 包" : "未知")}
       ${this.renderCard("aiotieba 版本", report.bridge.version || "未知")}
     </div>
     <p>${this.escapeHtml(report.bridge.message)}</p>

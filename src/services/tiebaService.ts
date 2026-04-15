@@ -61,7 +61,7 @@ export interface TiebaDiagnosticsReport extends TiebaStatusSnapshot {
     available: boolean;
     version?: string;
     modulePath?: string;
-    loadMode?: "installed" | "local";
+    loadMode?: "installed";
     pythonAvailable: boolean;
     pythonVersion?: string;
     canInstallAiotieba: boolean;
@@ -565,10 +565,7 @@ export class TiebaService {
         loadMode: result.loadMode,
         pythonAvailable: true,
         canInstallAiotieba: false,
-        message:
-          result.loadMode === "local"
-            ? "aiotieba bridge 可用，当前通过项目内 aiotieba-master 回退导入。"
-            : "aiotieba bridge 可用，当前通过已安装的 Python 包运行。"
+        message: "aiotieba bridge 可用，当前通过已安装的 Python 包运行。"
       };
     } catch (error) {
       const normalized = normalizeTiebaError(error);

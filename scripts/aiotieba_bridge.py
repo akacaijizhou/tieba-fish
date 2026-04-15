@@ -15,9 +15,6 @@ from urllib.parse import quote, urlsplit
 logging.basicConfig(level=logging.CRITICAL)
 logging.disable(logging.CRITICAL)
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-LOCAL_AIOTIEBA_PATH = ROOT / "aiotieba-master"
-
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
@@ -70,35 +67,13 @@ def ensure_aiotieba_import() -> Any:
                 f"缺少依赖：{missing}。"
                 "请重新执行 `python -m pip install --upgrade --only-binary=:all: aiotieba`。"
             ) from error
-
-        if not should_try_local_aiotieba():
-            raise RuntimeError(
-                "当前没有安装 aiotieba。"
-                "请先在插件里执行“安装 aiotieba”，或手动运行 "
-                "`python -m pip install --upgrade --only-binary=:all: aiotieba`。"
-            ) from error
-    except Exception as error:  # pragma: no cover
-        raise RuntimeError(f"导入 aiotieba 失败：{error}") from error
-
-    if str(LOCAL_AIOTIEBA_PATH) not in sys.path:
-        sys.path.insert(0, str(LOCAL_AIOTIEBA_PATH))
-
-    try:
-        import aiotieba as tb  # type: ignore
-        silence_aiotieba_logger(tb)
-    except ModuleNotFoundError as error:
-        missing = error.name or "unknown dependency"
         raise RuntimeError(
-            "开发模式下未能导入本地 aiotieba 源码。"
-            "请先执行 `python -m pip install --upgrade --only-binary=:all: aiotieba`；"
-            "如果你明确要直接跑本地源码，再装好 C/C++ 构建链后执行 "
-            "`python -m pip install -e .\\aiotieba-master`。"
-            f"当前缺少依赖：{missing}。"
+            "当前没有安装 aiotieba。"
+            "请先在插件里执行“安装 aiotieba”，或手动运行 "
+            "`python -m pip install --upgrade --only-binary=:all: aiotieba`。"
         ) from error
     except Exception as error:  # pragma: no cover
         raise RuntimeError(f"导入 aiotieba 失败：{error}") from error
-
-    return tb
 
 
 def silence_aiotieba_logger(tb: Any) -> None:
@@ -110,11 +85,6 @@ def silence_aiotieba_logger(tb: Any) -> None:
         tb.logging.set_logger(logger)
     except Exception:
         pass
-
-
-def should_try_local_aiotieba() -> bool:
-    return (ROOT / ".git").exists() and LOCAL_AIOTIEBA_PATH.exists()
-
 
 def normalize_title(title: str, fallback_text: str, thread_id: int | str) -> str:
     cleaned = (title or "").strip()
@@ -301,20 +271,12 @@ def author_id_value(user: Any, fallback_author_id: int | None = None) -> str | N
 def handle_health_check(tb: Any) -> dict[str, Any]:
     module_file = pathlib.Path(getattr(tb, "__file__", "")).resolve() if getattr(tb, "__file__", "") else None
     module_path = str(module_file) if module_file else ""
-    load_mode = "installed"
-
-    if module_file:
-        try:
-            module_file.relative_to(LOCAL_AIOTIEBA_PATH.resolve())
-            load_mode = "local"
-        except ValueError:
-            load_mode = "installed"
 
     return {
         "available": True,
         "version": str(getattr(tb, "__version__", "") or ""),
         "modulePath": module_path,
-        "loadMode": load_mode,
+        "loadMode": "installed",
     }
 
 

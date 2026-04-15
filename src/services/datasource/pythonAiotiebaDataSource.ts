@@ -65,7 +65,7 @@ export interface BridgeHealthCheckResult {
   available: boolean;
   version?: string;
   modulePath?: string;
-  loadMode?: "installed" | "local";
+  loadMode?: "installed";
 }
 
 export interface PythonRuntimeCheckResult {
