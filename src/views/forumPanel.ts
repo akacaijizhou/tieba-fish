@@ -81,11 +81,8 @@ export class ForumPanelManager {
         case "openThread":
           await vscode.commands.executeCommand("tieba.openThread", message.payload as ThreadSummary);
           break;
-        case "openExternal":
-          await vscode.commands.executeCommand("tieba.openExternal", { forumName: forum.forumName });
-          break;
-        case "openInSimpleBrowser":
-          await vscode.commands.executeCommand("tieba.openInSimpleBrowser", { forumName: forum.forumName });
+        case "openDiagnostics":
+          await vscode.commands.executeCommand("tieba.openDiagnostics");
           break;
         case "installAiotieba": {
           const installed = await vscode.commands.executeCommand<boolean>("tieba.installAiotieba");
@@ -173,7 +170,6 @@ export class ForumPanelManager {
         type: "forumLoaded",
         payload: {
           ...pageData,
-          fallbackToBrowser: this.service.getSettings().fallbackToBrowser,
           settings: this.service.getSettings()
         }
       });
@@ -187,8 +183,6 @@ export class ForumPanelManager {
           message: tiebaError.message,
           code: tiebaError.code,
           showInstallAiotieba: shouldOfferAiotiebaInstall(tiebaError),
-          sourceUrl: this.service.getForumUrl(state.forumName, state.page),
-          fallbackToBrowser: this.service.getSettings().fallbackToBrowser,
           settings: this.service.getSettings()
         }
       });

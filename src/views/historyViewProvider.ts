@@ -48,7 +48,7 @@ export class HistoryViewProvider implements vscode.TreeDataProvider<vscode.TreeI
         items.push(
           new InfoTreeItem("先去打开一个帖子", "打开一个关注吧，再点开任意帖子，这里就会开始记录。"),
           new ActionTreeItem(`打开 ${forums[0].displayName} 吧`, "tieba.openForum", [forums[0]], "arrow-right", "从这个吧开始看"),
-          new ActionTreeItem("浏览指定链接", "tieba.openThreadByUrl", undefined, "link-external", "有帖子链接时可直接打开")
+          new ActionTreeItem("粘贴帖子链接", "tieba.openThreadByUrl", undefined, "link-external", "有帖子链接时可直接打开")
         );
         return items;
       }
@@ -57,7 +57,7 @@ export class HistoryViewProvider implements vscode.TreeDataProvider<vscode.TreeI
       if (status.hasStoken) {
         items.push(
           new InfoTreeItem("先把内容加进来", "同步关注吧或手动添加贴吧后，打开帖子就会产生历史记录。"),
-          new ActionTreeItem("同步关注吧", "tieba.syncFollowedForums", undefined, "refresh", "先导入贴吧账号里的关注吧"),
+          new ActionTreeItem("导入我关注的贴吧", "tieba.syncFollowedForums", undefined, "refresh", "先导入贴吧账号里的关注吧"),
           new ActionTreeItem("添加贴吧", "tieba.addForum", undefined, "add", "先手动添加一个吧")
         );
         return items;
@@ -65,8 +65,8 @@ export class HistoryViewProvider implements vscode.TreeDataProvider<vscode.TreeI
 
       items.push(
         new InfoTreeItem("先开始第一次阅读", "可以先添加贴吧，或者去首页看下一步建议。"),
-        new ActionTreeItem("添加贴吧", "tieba.addForum", undefined, "add", "先加一个吧"),
-        new ActionTreeItem("浏览指定链接", "tieba.openThreadByUrl", undefined, "link-external", "直接打开一个帖子"),
+        new ActionTreeItem("开始看帖", "tieba.quickStart", undefined, "play", "输入吧名或粘贴帖子链接"),
+        new ActionTreeItem("粘贴帖子链接", "tieba.openThreadByUrl", undefined, "link-external", "直接打开一个帖子"),
         new ActionTreeItem("打开首页", "tieba.openOnboarding", undefined, "home", "看当前还差哪一步")
       );
       return items;

@@ -113,8 +113,8 @@
       return;
     }
 
-    if (action === "external") {
-      send("openExternal");
+    if (action === "diagnostics") {
+      send("openDiagnostics");
       return;
     }
 
@@ -250,16 +250,24 @@
   function renderCommentCards(items) {
     return items
       .map(
-        (item) => `
+        (item) => {
+          const replyTarget = item.replyToName || item.replyToId || "";
+          return `
           <div class="comment-card">
             <div class="comment-meta">
               <span>${escapeHtml(item.authorName)}</span>
+              ${
+                replyTarget
+                  ? `<span class="comment-reply-to"><span class="comment-reply-word">回复</span><span>${escapeHtml(replyTarget)}</span></span>`
+                  : ""
+              }
               ${item.isLz ? '<span class="tag">楼主</span>' : ""}
               ${item.createdAtLabel ? `<span>${escapeHtml(item.createdAtLabel)}</span>` : ""}
             </div>
             <div class="comment-content">${renderCommentContent(item)}</div>
           </div>
-        `
+        `;
+        }
       )
       .join("");
   }
@@ -379,9 +387,8 @@
         <div class="hint">${escapeHtml(state.error.message)}</div>
         <div class="toolbar">
           <button class="button" data-action="refresh">重试</button>
+          <button class="button" data-action="diagnostics">环境诊断</button>
           ${state.error?.showInstallAiotieba ? '<button class="button" data-action="installAiotieba">安装 aiotieba</button>' : ""}
-          <button class="button" data-action="browser">VS Code 浏览器</button>
-          <button class="button" data-action="external">系统浏览器</button>
         </div>
       </section>
     `;
@@ -477,8 +484,6 @@
               <button class="button${state.onlyLz ? " is-active" : ""}" data-action="onlyLz"${state.loading ? " disabled" : ""}>${state.onlyLz ? "只看楼主中" : "只看楼主"}</button>
               <button class="button" data-action="images">${state.settings.showImages ? "隐藏图片" : "显示图片"}</button>
               <button class="button" data-action="help">快捷键</button>
-              <button class="button" data-action="browser">VS Code 浏览器</button>
-              <button class="button" data-action="external">系统浏览器</button>
             </div>
           </div>
         </header>
@@ -506,10 +511,6 @@
         const action = element.getAttribute("data-action");
         if (action === "favorite") {
           send("favoriteThread");
-          return;
-        }
-        if (action === "browser") {
-          send("openInSimpleBrowser");
           return;
         }
         if (action === "closeShortcutHelp") {

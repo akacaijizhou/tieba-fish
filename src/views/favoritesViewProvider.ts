@@ -36,14 +36,14 @@ export class FavoritesViewProvider implements vscode.TreeDataProvider<vscode.Tre
         items.push(
           new InfoTreeItem("先打开一个帖子看看", "帖子页顶部会提供收藏入口。"),
           new ActionTreeItem(`打开 ${forums[0].displayName} 吧`, "tieba.openForum", [forums[0]], "arrow-right", "从这个吧开始找内容"),
-          new ActionTreeItem("浏览指定链接", "tieba.openThreadByUrl", undefined, "link-external", "直接打开一个帖子")
+          new ActionTreeItem("粘贴帖子链接", "tieba.openThreadByUrl", undefined, "link-external", "直接打开一个帖子")
         );
         return items;
       }
 
       items.push(
         new InfoTreeItem("先开始阅读，再把想留的帖子收进这里", "收藏会按时间倒序显示，适合做稍后读入口。"),
-        new ActionTreeItem("添加贴吧", "tieba.addForum", undefined, "add", "先加一个吧"),
+        new ActionTreeItem("开始看帖", "tieba.quickStart", undefined, "play", "输入吧名或粘贴帖子链接"),
         new ActionTreeItem("打开首页", "tieba.openOnboarding", undefined, "home", "看当前最适合的下一步")
       );
       return items;

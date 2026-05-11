@@ -22,14 +22,14 @@ import { SettingsStore } from "../storage/settingsStore";
 import { STORAGE_KEYS } from "../storage/storageKeys";
 import { AuthStore } from "../storage/authStore";
 import { TiebaError } from "./errors";
-import { LiveTiebaDataSource, buildForumUrl, buildThreadUrl } from "./datasource/liveTiebaDataSource";
-import { PythonAiotiebaDataSource, PythonRuntimeCheckResult } from "./datasource/pythonAiotiebaDataSource";
+import { LiveTiebaDataSource } from "./datasource/liveTiebaDataSource";
+import { PythonAiotiebaDataSource, PythonInstallResult, PythonRuntimeCheckResult } from "./datasource/pythonAiotiebaDataSource";
 import { TiebaDataSource } from "./datasource/tiebaDataSource";
 
 const CACHE_VERSION = 2;
 const BAIDU_SUGGEST_URL = "https://suggestion.baidu.com/su";
 const FORUM_SUGGESTION_STOP_WORDS = ["官网", "下载", "入口", "实时行情", "官服"];
-const WEB_POST_COMMENTS_HINT = "当前网页回退链路只展示楼中楼预览；如需展开完整回复，请改用 VS Code 浏览器或系统浏览器。";
+const WEB_POST_COMMENTS_HINT = "当前网页回退链路只展示楼中楼预览；如需完整展开，请先在环境诊断里检查 Python 和阅读增强组件。";
 
 export interface ForumNameSuggestion {
   forumName: string;
@@ -178,6 +178,12 @@ export class TiebaService {
     this.statusEmitter.fire();
   }
 
+  async installPythonRuntime(): Promise<PythonInstallResult> {
+    const result = await this.bridgeDataSource.installPythonRuntime();
+    this.statusEmitter.fire();
+    return result;
+  }
+
   async toggleImages(): Promise<TiebaSettings> {
     const current = this.getSettings();
     await this.settingsStore.updateShowImages(!current.showImages);
@@ -214,7 +220,7 @@ export class TiebaService {
     if (!auth.bduss || !auth.stoken) {
       throw new TiebaError(
         "auth",
-        "同步我关注的贴吧需要完整登录态。请导入包含 STOKEN 的完整贴吧 Cookie。"
+        "导入我关注的贴吧需要完整贴吧登录。请重新导入一次从浏览器复制的完整 Cookie。"
       );
     }
 
@@ -461,14 +467,6 @@ export class TiebaService {
     }
 
     return Array.from(merged.values());
-  }
-
-  getForumUrl(forumName: string, page = 1): string {
-    return buildForumUrl(forumName, page);
-  }
-
-  getThreadUrl(threadId: string, page = 1): string {
-    return buildThreadUrl(threadId, page);
   }
 
   private getCacheTtlMs(): number {

@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import {
   ForumSubscription,
-  OpenTarget,
   ThreadSummary,
   TiebaThemePreset
 } from "./models/tieba";
@@ -49,19 +48,13 @@ export function activate(context: vscode.ExtensionContext): void {
   const shortcutHelpPanel = new ShortcutHelpPanel(context, service);
   const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10);
   const themePresetStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 9);
-  const resetOnboardingStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 9);
   statusBarItem.command = "tieba.openDiagnostics";
   statusBarItem.name = "Tieba 状态";
   themePresetStatusBarItem.command = "tieba.selectThemePreset";
   themePresetStatusBarItem.name = "Tieba 主题";
   statusBarItem.show();
   themePresetStatusBarItem.show();
-  resetOnboardingStatusBarItem.command = "tieba.resetOnboardingAndReload";
-  resetOnboardingStatusBarItem.name = "Tieba 重置引导";
-  resetOnboardingStatusBarItem.text = "$(debug-restart) 重置引导";
-  resetOnboardingStatusBarItem.tooltip = "清空本地登录态、缓存和引导状态，并重载当前窗口";
-  resetOnboardingStatusBarItem.show();
-  context.subscriptions.push(statusBarItem, themePresetStatusBarItem, resetOnboardingStatusBarItem);
+  context.subscriptions.push(statusBarItem, themePresetStatusBarItem);
 
   void vscode.commands.executeCommand("setContext", "tieba.bossModeEnabled", false);
 
@@ -74,52 +67,129 @@ export function activate(context: vscode.ExtensionContext): void {
     themePresetStatusBarItem.tooltip = `当前主题：${getThemePresetOption(settings.themePreset).label}\n点击切换主题预设。`;
   };
 
-  let aiotiebaInstallPromptInFlight = false;
-  const maybePromptAiotiebaInstallFromOnboarding = async (): Promise<void> => {
-    if (aiotiebaInstallPromptInFlight) {
-      return;
-    }
-
-    if (context.globalState.get<boolean>(STORAGE_KEYS.aiotiebaInstallPromptShown, false)) {
-      return;
-    }
-
-    const diagnostics = await service.getDiagnosticsReport();
-    if (!diagnostics.bridge.canInstallAiotieba) {
-      return;
-    }
-
-    aiotiebaInstallPromptInFlight = true;
-    try {
-      await context.globalState.update(STORAGE_KEYS.aiotiebaInstallPromptShown, true);
-      const action = await vscode.window.showInformationMessage(
-        "检测到本机已经有 Python，但还没有安装 aiotieba。现在安装后，首页和阅读页都会优先走更稳的结构化链路。",
-        "现在安装",
-        "环境诊断",
-        "稍后"
-      );
-
-      if (action === "现在安装") {
-        await vscode.commands.executeCommand("tieba.installAiotieba");
-        return;
-      }
-
-      if (action === "环境诊断") {
-        await vscode.commands.executeCommand("tieba.openDiagnostics");
-      }
-    } finally {
-      aiotiebaInstallPromptInFlight = false;
-    }
-  };
-
   const openOnboarding = async (preserveFocus = false): Promise<void> => {
     await context.globalState.update(STORAGE_KEYS.onboardingSeen, true);
     await context.globalState.update(STORAGE_KEYS.onboardingForceNextOpen, false);
     await onboardingPanel.open({ preserveFocus });
-    await maybePromptAiotiebaInstallFromOnboarding();
+  };
+
+  let readingEnhancementAutoInstallInFlight = false;
+  let pythonInstallPromptInFlight = false;
+  let pythonInstallPromptDismissedThisSession = false;
+  const maybeAutoInstallReadingEnhancement = async (): Promise<void> => {
+    if (readingEnhancementAutoInstallInFlight) {
+      return;
+    }
+
+    const shouldAutoInstall = vscode.workspace
+      .getConfiguration("tieba")
+      .get<boolean>("autoInstallEnhancement", true);
+    if (!shouldAutoInstall) {
+      return;
+    }
+
+    let attemptedInstallKey: string | undefined;
+    readingEnhancementAutoInstallInFlight = true;
+    try {
+      const diagnostics = await service.getDiagnosticsReport();
+      if (diagnostics.bridge.available) {
+        await context.globalState.update(STORAGE_KEYS.aiotiebaAutoInstallAttempted, true);
+        return;
+      }
+
+      if (!diagnostics.bridge.canInstallAiotieba) {
+        return;
+      }
+
+      const attemptKey = buildReadingEnhancementAutoInstallAttemptKey(diagnostics);
+      if (
+        context.globalState.get<string>(STORAGE_KEYS.aiotiebaAutoInstallAttemptKey, "") === attemptKey
+      ) {
+        return;
+      }
+
+      attemptedInstallKey = attemptKey;
+      await context.globalState.update(STORAGE_KEYS.aiotiebaAutoInstallAttempted, true);
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "正在安装 Tieba Fish 阅读增强组件",
+          cancellable: false
+        },
+        () => service.installAiotiebaPackage()
+      );
+
+      await context.globalState.update(STORAGE_KEYS.aiotiebaAutoInstallAttemptKey, undefined);
+      void vscode.window.showInformationMessage("阅读增强组件已自动安装完成。后续看帖会更稳定。");
+      await refreshStatusBar();
+    } catch (error) {
+      if (attemptedInstallKey) {
+        await context.globalState.update(STORAGE_KEYS.aiotiebaAutoInstallAttemptKey, attemptedInstallKey);
+      }
+      const message = error instanceof Error ? error.message : "阅读增强组件自动安装失败。";
+      const action = await vscode.window.showWarningMessage(
+        `${message} 不影响先用基础模式看帖。`,
+        "检查问题",
+        "稍后"
+      );
+      if (action === "检查问题") {
+        await vscode.commands.executeCommand("tieba.openDiagnostics");
+      }
+    } finally {
+      readingEnhancementAutoInstallInFlight = false;
+    }
+  };
+
+  const maybePromptPythonInstall = async (): Promise<void> => {
+    if (pythonInstallPromptInFlight) {
+      return;
+    }
+
+    const shouldPrompt = vscode.workspace
+      .getConfiguration("tieba")
+      .get<boolean>("autoInstallPython", true);
+    if (!shouldPrompt) {
+      return;
+    }
+
+    if (pythonInstallPromptDismissedThisSession) {
+      return;
+    }
+
+    pythonInstallPromptInFlight = true;
+    try {
+      const diagnostics = await service.getDiagnosticsReport();
+      if (diagnostics.bridge.pythonAvailable) {
+        return;
+      }
+
+      const action = await vscode.window.showInformationMessage(
+        "Tieba Fish 没检测到 Python。可以先用基础模式；安装 Python 后会自动补齐阅读增强组件。",
+        "安装 Python",
+        "下载页",
+        "稍后"
+      );
+
+      if (action === "安装 Python") {
+        await vscode.commands.executeCommand("tieba.installPython");
+        return;
+      }
+
+      if (action === "下载页") {
+        pythonInstallPromptDismissedThisSession = true;
+        await vscode.commands.executeCommand("tieba.openPythonDownload");
+        return;
+      }
+
+      pythonInstallPromptDismissedThisSession = true;
+    } finally {
+      pythonInstallPromptInFlight = false;
+    }
   };
 
   void refreshStatusBar();
+  void maybeAutoInstallReadingEnhancement();
+  void maybePromptPythonInstall();
 
   const followedForumsView = vscode.window.createTreeView("tieba.forums", {
     treeDataProvider: followedForumsProvider
@@ -225,10 +295,22 @@ export function activate(context: vscode.ExtensionContext): void {
         threadPanels.broadcastSettings();
         void refreshStatusBar();
       }
+
+      if (event.affectsConfiguration("tieba.pythonPath") || event.affectsConfiguration("tieba.autoInstallEnhancement")) {
+        void maybeAutoInstallReadingEnhancement();
+      }
+
+      if (event.affectsConfiguration("tieba.pythonPath") || event.affectsConfiguration("tieba.autoInstallPython")) {
+        void maybePromptPythonInstall();
+      }
     })
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand("tieba.quickStart", async () => {
+      await runQuickStart(service);
+    }),
+
     vscode.commands.registerCommand("tieba.addForum", async () => {
       const value = await pickForumName(service);
 
@@ -245,7 +327,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const result = await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: "正在同步我关注的贴吧",
+            title: "正在导入我关注的贴吧",
             cancellable: false
           },
           () => service.syncFollowedForums()
@@ -257,14 +339,14 @@ export function activate(context: vscode.ExtensionContext): void {
         }
 
         void vscode.window.showInformationMessage(
-          `同步完成：新增 ${result.added} 个，已存在 ${result.existing} 个。`
+          `导入完成：新增 ${result.added} 个，已存在 ${result.existing} 个。`
         );
       } catch (error) {
         const normalized =
           error instanceof TiebaError ? error : new TiebaError("unknown", error instanceof Error ? error.message : "同步失败。");
         if (normalized.code === "auth") {
-          const action = await vscode.window.showErrorMessage(normalized.message, "去导入登录态");
-          if (action === "去导入登录态") {
+          const action = await vscode.window.showErrorMessage(normalized.message, "去导入登录");
+          if (action === "去导入登录") {
             await vscode.commands.executeCommand("tieba.configureAccount");
           }
           return;
@@ -274,42 +356,43 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
 
-    vscode.commands.registerCommand("tieba.configureAccount", async () => {
+    vscode.commands.registerCommand("tieba.configureAccount", async (): Promise<boolean> => {
       const hasLoginState = await service.hasLoginState();
       const primaryInput = await vscode.window.showInputBox({
-        title: "导入贴吧登录态",
+        title: "导入贴吧登录",
         prompt: hasLoginState
-          ? "优先粘贴新的完整贴吧 Cookie。扩展会自动提取 BDUSS / STOKEN，并同步更新网页回退登录态。"
-          : "粘贴从浏览器复制的完整贴吧 Cookie。扩展会自动提取 BDUSS / STOKEN；也兼容直接粘贴 BDUSS。",
-        placeHolder: "例如：BDUSS=...; STOKEN=...; BAIDUID=...",
+          ? "粘贴新的完整贴吧 Cookie。只看帖可以跳过这步；想同步关注吧时再导入即可。"
+          : "只看帖可以先跳过。想同步账号里的关注吧时，粘贴从浏览器复制的完整贴吧 Cookie。",
+        placeHolder: "粘贴浏览器请求里的 Cookie 内容",
         password: true,
         ignoreFocusOut: true,
         validateInput: (input) => validateLoginStateInput(input)
       });
 
       if (!primaryInput?.trim()) {
-        return;
+        return false;
       }
 
       const imported = parseImportedLoginState(primaryInput);
       if (!imported) {
-        void vscode.window.showErrorMessage("没有识别到 BDUSS。建议直接粘贴从浏览器复制的完整贴吧 Cookie。");
-        return;
+        void vscode.window.showErrorMessage("没有识别到有效登录信息。建议直接粘贴从浏览器复制的完整 Cookie。");
+        return false;
       }
 
       await service.saveImportedLoginState(imported);
       void vscode.window.showInformationMessage(buildImportedLoginStateMessage(imported));
+      return true;
     }),
 
     vscode.commands.registerCommand("tieba.clearAccount", async () => {
       const hasLoginState = await service.hasLoginState();
       if (!hasLoginState) {
-        void vscode.window.showInformationMessage("当前还没有导入贴吧登录态。");
+        void vscode.window.showInformationMessage("当前还没有导入贴吧登录。");
         return;
       }
 
       const confirm = await vscode.window.showWarningMessage(
-        "清除本地保存的贴吧登录态？这会同时清除提取出来的 BDUSS / STOKEN 和已导入的 Cookie，之后将回到匿名访问。",
+        "清除本地保存的贴吧登录？清除后将回到未登录状态。",
         { modal: true },
         "清除"
       );
@@ -319,7 +402,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       await service.clearLoginState();
-      void vscode.window.showInformationMessage("贴吧登录态已清除。");
+      void vscode.window.showInformationMessage("贴吧登录已清除。");
     }),
 
     vscode.commands.registerCommand("tieba.configureCookie", async () => {
@@ -329,7 +412,7 @@ export function activate(context: vscode.ExtensionContext): void {
         prompt: hasCookie
           ? "粘贴新的贴吧 Cookie。保存后会覆盖旧值并清理缓存。"
           : "粘贴从浏览器复制的完整贴吧 Cookie。",
-        placeHolder: "例如：BDUSS=...; STOKEN=...; BAIDUID=...",
+        placeHolder: "粘贴浏览器请求里的 Cookie 内容",
         password: true,
         ignoreFocusOut: true,
         validateInput: (input) => validateCookieInput(input)
@@ -341,7 +424,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
       await service.saveCookie(value.trim());
       void vscode.window.showInformationMessage(
-        "贴吧 Cookie 已保存到 VS Code Secret Storage。后续请求会自动带上登录态。"
+        "贴吧 Cookie 已保存到 VS Code Secret Storage。后续请求会自动带上登录信息。"
       );
     }),
 
@@ -525,7 +608,7 @@ export function activate(context: vscode.ExtensionContext): void {
         await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: "正在安装 aiotieba",
+            title: "正在安装阅读增强组件",
             cancellable: false
           },
           async () => {
@@ -533,12 +616,64 @@ export function activate(context: vscode.ExtensionContext): void {
           }
         );
 
-        void vscode.window.showInformationMessage("aiotieba 安装完成。现在会优先走结构化数据主路径。");
+        await context.globalState.update(STORAGE_KEYS.aiotiebaAutoInstallAttempted, true);
+        await context.globalState.update(STORAGE_KEYS.aiotiebaAutoInstallAttemptKey, undefined);
+        void vscode.window.showInformationMessage("阅读增强组件安装完成。后续看帖会更稳定。");
         return true;
       } catch (error) {
-        const message = error instanceof Error ? error.message : "安装 aiotieba 失败。";
-        const action = await vscode.window.showErrorMessage(message, "打开环境诊断");
-        if (action === "打开环境诊断") {
+        const message = error instanceof Error ? error.message : "安装阅读增强组件失败。";
+        const action = await vscode.window.showErrorMessage(message, "检查问题");
+        if (action === "检查问题") {
+          await vscode.commands.executeCommand("tieba.openDiagnostics");
+        }
+        return false;
+      }
+    }),
+
+    vscode.commands.registerCommand("tieba.installPython", async (): Promise<boolean> => {
+      try {
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: "正在安装 Python",
+            cancellable: false
+          },
+          async () => {
+            await service.installPythonRuntime();
+          }
+        );
+
+        await context.globalState.update(STORAGE_KEYS.aiotiebaAutoInstallAttempted, false);
+        await context.globalState.update(STORAGE_KEYS.aiotiebaAutoInstallAttemptKey, undefined);
+        await refreshStatusBar();
+        void vscode.window.showInformationMessage("Python 已安装，正在继续检查阅读增强组件。");
+        await maybeAutoInstallReadingEnhancement();
+        await refreshStatusBar();
+
+        const diagnostics = await service.getDiagnosticsReport();
+        if (diagnostics.bridge.available) {
+          return true;
+        }
+
+        const action = await vscode.window.showInformationMessage(
+          "Python 已安装，但阅读增强组件还不可用。可以打开检查页查看原因。",
+          "检查问题"
+        );
+        if (action === "检查问题") {
+          await vscode.commands.executeCommand("tieba.openDiagnostics");
+        }
+        return true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "安装 Python 失败。";
+        const action = await vscode.window.showErrorMessage(
+          `${message} 可以改用 Python 官网下载安装。`,
+          "打开下载页",
+          "检查问题"
+        );
+        if (action === "打开下载页") {
+          await vscode.commands.executeCommand("tieba.openPythonDownload");
+        }
+        if (action === "检查问题") {
           await vscode.commands.executeCommand("tieba.openDiagnostics");
         }
         return false;
@@ -551,12 +686,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("tieba.resetOnboardingAndReload", async () => {
       const confirm = await vscode.window.showWarningMessage(
-        "重置引导并清空本地 Tieba 数据？这会删除 BDUSS、STOKEN、Cookie、关注吧、收藏、历史和缓存，然后重载当前窗口。",
+        "完全重置 Tieba Fish？这会清空本地保存的贴吧登录、关注吧、收藏、历史、缓存和首页引导状态，然后重载当前窗口。",
         { modal: true },
-        "清空并重载"
+        "完全重置"
       );
 
-      if (confirm !== "清空并重载") {
+      if (confirm !== "完全重置") {
         return;
       }
 
@@ -565,28 +700,9 @@ export function activate(context: vscode.ExtensionContext): void {
       await context.globalState.update(STORAGE_KEYS.onboardingSeen, false);
       await context.globalState.update(STORAGE_KEYS.onboardingForceNextOpen, true);
       await context.globalState.update(STORAGE_KEYS.aiotiebaInstallPromptShown, false);
+      await context.globalState.update(STORAGE_KEYS.aiotiebaAutoInstallAttempted, false);
+      await context.globalState.update(STORAGE_KEYS.aiotiebaAutoInstallAttemptKey, undefined);
       await vscode.commands.executeCommand("workbench.action.reloadWindow");
-    }),
-
-    vscode.commands.registerCommand("tieba.openExternal", async (target?: OpenTarget) => {
-      const url = resolveUrl(service, target);
-      if (!url) {
-        return;
-      }
-      await vscode.env.openExternal(vscode.Uri.parse(url));
-    }),
-
-    vscode.commands.registerCommand("tieba.openInSimpleBrowser", async (target?: OpenTarget) => {
-      const url = resolveUrl(service, target);
-      if (!url) {
-        return;
-      }
-
-      try {
-        await vscode.commands.executeCommand("simpleBrowser.show", url);
-      } catch {
-        await vscode.env.openExternal(vscode.Uri.parse(url));
-      }
     }),
 
     vscode.commands.registerCommand("tieba.toggleImages", async () => {
@@ -606,23 +722,6 @@ export function deactivate(): void {
   // noop
 }
 
-function resolveUrl(service: TiebaService, target?: OpenTarget): string | undefined {
-  if (!target) {
-    return undefined;
-  }
-
-  if ("threadId" in target) {
-    return target.url || service.getThreadUrl(target.threadId);
-  }
-
-  if ("forumName" in target) {
-    const url = "url" in target ? target.url : undefined;
-    return url || service.getForumUrl(target.forumName);
-  }
-
-  return undefined;
-}
-
 interface ImportedLoginState {
   bduss: string;
   stoken?: string;
@@ -637,15 +736,15 @@ function validateLoginStateInput(input: string): string | undefined {
 
   const imported = parseImportedLoginState(value);
   if (!imported) {
-    return "没有识别到 BDUSS。建议直接粘贴从浏览器复制的完整贴吧 Cookie。";
+    return "没有识别到有效登录信息。建议直接粘贴从浏览器复制的完整 Cookie。";
   }
 
   if (/\s/.test(imported.bduss)) {
-    return "BDUSS 不应包含空白字符。";
+    return "登录信息里不应包含空白字符。";
   }
 
   if (imported.bduss.length < 20) {
-    return "识别到的 BDUSS 长度偏短，建议确认是否复制完整。";
+    return "识别到的登录信息偏短，建议确认是否复制完整。";
   }
 
   return undefined;
@@ -702,15 +801,15 @@ function looksLikeCookieString(input: string): boolean {
 function buildImportedLoginStateMessage(imported: ImportedLoginState): string {
   if (!imported.stoken) {
     return imported.cookie
-      ? "贴吧登录态已导入，但没有检测到 STOKEN。普通阅读可以继续使用；同步我关注的贴吧仍建议重新导入完整 Cookie。"
-      : "BDUSS 已导入。普通阅读可以继续使用；同步我关注的贴吧仍需要包含 STOKEN 的完整 Cookie。";
+      ? "贴吧登录已导入。普通阅读可以继续使用；如果同步关注吧失败，再重新导入一次完整 Cookie。"
+      : "贴吧登录已导入。普通阅读可以继续使用；同步关注吧可能还需要完整 Cookie。";
   }
 
   if (imported.cookie) {
-    return "贴吧登录态已导入。后续请求会优先走 aiotieba，网页回退也会复用这份 Cookie。";
+    return "贴吧登录已导入。现在可以同步账号里的关注吧。";
   }
 
-  return "贴吧登录态已导入。后续请求会优先走 aiotieba 数据源。";
+  return "贴吧登录已导入。现在可以同步账号里的关注吧。";
 }
 
 function validateCookieInput(input: string): string | undefined {
@@ -831,22 +930,8 @@ function createTreeViewLoadingController(
 
 function buildTiebaStatusBarText(report: Awaited<ReturnType<TiebaService["getDiagnosticsReport"]>>): string {
   const human = getTiebaHumanStatus(report);
-  const icon =
-    !report.bridge.pythonAvailable || !report.bridge.available
-      ? "$(warning)"
-      : report.hasBduss && report.hasStoken && report.lastResolvedSource === "aiotieba"
-        ? "$(check)"
-        : report.hasBduss
-          ? "$(warning)"
-          : "$(circle-outline)";
-  const suffix =
-    human.syncLabel === "可以同步"
-      ? "可同步"
-      : human.readingLabel === "可直接阅读"
-        ? "需补全登录态"
-        : human.readingLabel;
-
-  return `${icon} Tieba ${human.readingLabel} · ${suffix}`;
+  const icon = report.lastFailure ? "$(warning)" : report.hasBduss ? "$(check)" : "$(book)";
+  return `${icon} Tieba ${human.readingLabel}`;
 }
 
 function buildTiebaStatusBarTooltip(report: Awaited<ReturnType<TiebaService["getDiagnosticsReport"]>>): vscode.MarkdownString {
@@ -854,14 +939,14 @@ function buildTiebaStatusBarTooltip(report: Awaited<ReturnType<TiebaService["get
   const markdown = new vscode.MarkdownString(undefined, true);
   markdown.isTrusted = true;
   markdown.appendMarkdown("**Tieba 当前状态**\n\n");
-  markdown.appendMarkdown(`- 阅读：${human.readingLabel}\n`);
-  markdown.appendMarkdown(`- 同步关注吧：${human.syncLabel}\n`);
-  markdown.appendMarkdown(`- 当前链路：${human.sourceLabel}\n`);
-  markdown.appendMarkdown(`- 登录态：${human.loginLabel}\n`);
+  markdown.appendMarkdown(`- 看帖：${human.readingLabel}\n`);
+  markdown.appendMarkdown(`- 关注吧同步：${human.syncLabel}\n`);
+  markdown.appendMarkdown(`- 阅读模式：${human.sourceLabel}\n`);
+  markdown.appendMarkdown(`- 贴吧登录：${human.loginLabel}\n`);
   if (report.lastFailure) {
     markdown.appendMarkdown(`- 最近失败：${report.lastFailure.message}\n`);
   }
-  markdown.appendMarkdown("\n点击打开环境诊断。");
+  markdown.appendMarkdown("\n点击检查问题。");
   return markdown;
 }
 
@@ -874,10 +959,108 @@ function shouldAutoOpenOnboarding(service: TiebaService, diagnostics: Awaited<Re
     && !service.getReadingSession();
 }
 
+function buildReadingEnhancementAutoInstallAttemptKey(
+  diagnostics: Awaited<ReturnType<TiebaService["getDiagnosticsReport"]>>
+): string {
+  const pythonPath = diagnostics.bridge.pythonPath || "python";
+  const pythonVersion = diagnostics.bridge.pythonVersion || "unknown";
+  return `${pythonPath}:${pythonVersion}`;
+}
+
+interface QuickStartPickItem extends vscode.QuickPickItem {
+  command: string;
+  args?: unknown[];
+  syncAfterLogin?: boolean;
+}
+
+async function runQuickStart(service: TiebaService): Promise<void> {
+  const readingSession = service.getReadingSession();
+  const forums = service.listForums();
+  const status = await service.getStatusSnapshot();
+  const items: QuickStartPickItem[] = [];
+
+  if (readingSession) {
+    items.push({
+      label: "继续上次阅读",
+      description: `${readingSession.thread.forumName}吧 · 第 ${readingSession.page} 页`,
+      detail: readingSession.thread.title,
+      command: "tieba.continueReading"
+    });
+  }
+
+  if (forums.length > 0) {
+    items.push({
+      label: `打开 ${forums[0].displayName} 吧`,
+      description: "从已添加的贴吧继续看",
+      command: "tieba.openForum",
+      args: [forums[0]]
+    });
+    items.push({
+      label: "再添加一个贴吧",
+      description: "输入吧名后加入左侧",
+      command: "tieba.addForum"
+    });
+  } else {
+    items.push({
+      label: "输入吧名开始看",
+      description: "不需要登录，先加一个吧",
+      command: "tieba.addForum"
+    });
+  }
+
+  items.push({
+    label: "粘贴帖子链接打开",
+    description: "有帖子链接或帖子 ID 时直接打开",
+    command: "tieba.openThreadByUrl"
+  });
+
+  if (status.hasStoken) {
+    items.push({
+      label: "导入我关注的贴吧",
+      description: "把账号里关注的吧放到左侧",
+      command: "tieba.syncFollowedForums"
+    });
+  } else {
+    items.push({
+      label: "登录后导入关注吧",
+      description: "可选：想同步账号关注列表时再用",
+      command: "tieba.configureAccount",
+      syncAfterLogin: true
+    });
+  }
+
+  const picked = await vscode.window.showQuickPick(items, {
+    title: "想怎么开始？",
+    placeHolder: "推荐：输入吧名开始看，后面再登录也可以",
+    matchOnDescription: true,
+    matchOnDetail: true,
+    ignoreFocusOut: true
+  });
+
+  if (!picked) {
+    return;
+  }
+
+  const result = await vscode.commands.executeCommand<boolean | void>(picked.command, ...(picked.args ?? []));
+  if (!picked.syncAfterLogin || !result) {
+    return;
+  }
+
+  const refreshedStatus = await service.getStatusSnapshot();
+  if (!refreshedStatus.hasStoken) {
+    return;
+  }
+
+  const action = await vscode.window.showInformationMessage("登录已导入。现在把账号里关注的贴吧同步到左侧？", "现在同步", "稍后");
+  if (action === "现在同步") {
+    await vscode.commands.executeCommand("tieba.syncFollowedForums");
+  }
+}
+
 async function openThreadFromInput(threadPanels: ThreadPanelManager): Promise<void> {
   const value = await vscode.window.showInputBox({
-    title: "浏览指定链接",
-    prompt: "输入帖子链接或帖子 ID，然后在 Tieba Webview 中打开。",
+    title: "粘贴帖子链接",
+    prompt: "输入帖子链接或帖子 ID，然后在阅读页打开。",
     placeHolder: "例如：https://tieba.baidu.com/p/123456789?pn=2 或 123456789",
     ignoreFocusOut: true,
     validateInput: (input) => {

@@ -43,6 +43,7 @@
     "onView:tieba.latest",
     "onView:tieba.favorites",
     "onView:tieba.history",
+    "onStartupFinished",
     "onCommand:tieba.addForum",
     "onCommand:tieba.syncFollowedForums",
     "onCommand:tieba.configureAccount",
@@ -52,9 +53,11 @@
     "onCommand:tieba.bossKey",
     "onCommand:tieba.openDiagnostics",
     "onCommand:tieba.openOnboarding",
+    "onCommand:tieba.quickStart",
     "onCommand:tieba.selectThemePreset",
     "onCommand:tieba.openShortcutHelp",
     "onCommand:tieba.installAiotieba",
+    "onCommand:tieba.installPython",
     "onCommand:tieba.openPythonDownload",
     "onCommand:tieba.resetOnboardingAndReload",
     "onCommand:tieba.openThreadByUrl",
@@ -103,9 +106,14 @@
     },
     "commands": [
       {
+        "command": "tieba.quickStart",
+        "title": "开始看帖",
+        "category": "Tieba Fish"
+      },
+      {
         "command": "tieba.addForum",
         "title": "添加贴吧",
-        "category": "开始使用"
+        "category": "Tieba Fish"
       },
       {
         "command": "tieba.refreshAll",
@@ -113,8 +121,8 @@
       },
       {
         "command": "tieba.syncFollowedForums",
-        "title": "同步关注吧",
-        "category": "开始使用"
+        "title": "导入我关注的贴吧",
+        "category": "Tieba Fish"
       },
       {
         "command": "tieba.refreshLatest",
@@ -130,12 +138,12 @@
       },
       {
         "command": "tieba.configureAccount",
-        "title": "导入登录态",
-        "category": "开始使用"
+        "title": "导入贴吧登录",
+        "category": "Tieba Fish"
       },
       {
         "command": "tieba.clearAccount",
-        "title": "清除登录态",
+        "title": "清除贴吧登录",
         "category": "维护"
       },
       {
@@ -162,21 +170,13 @@
       },
       {
         "command": "tieba.openThreadByUrl",
-        "title": "浏览指定链接",
-        "category": "阅读"
+        "title": "粘贴帖子链接",
+        "category": "Tieba Fish"
       },
       {
         "command": "tieba.continueReading",
         "title": "继续阅读",
-        "category": "阅读"
-      },
-      {
-        "command": "tieba.openExternal",
-        "title": "在浏览器打开"
-      },
-      {
-        "command": "tieba.openInSimpleBrowser",
-        "title": "在 VS Code 浏览器打开"
+        "category": "Tieba Fish"
       },
       {
         "command": "tieba.toggleImages",
@@ -190,13 +190,13 @@
       },
       {
         "command": "tieba.openDiagnostics",
-        "title": "环境诊断",
+        "title": "检查问题",
         "category": "维护"
       },
       {
         "command": "tieba.openOnboarding",
         "title": "打开首页",
-        "category": "开始使用"
+        "category": "Tieba Fish"
       },
       {
         "command": "tieba.openShortcutHelp",
@@ -210,17 +210,22 @@
       },
       {
         "command": "tieba.installAiotieba",
-        "title": "安装 aiotieba",
-        "category": "开始使用"
+        "title": "安装阅读增强组件",
+        "category": "维护"
+      },
+      {
+        "command": "tieba.installPython",
+        "title": "安装 Python",
+        "category": "维护"
       },
       {
         "command": "tieba.openPythonDownload",
         "title": "下载 Python",
-        "category": "开始使用"
+        "category": "维护"
       },
       {
         "command": "tieba.resetOnboardingAndReload",
-        "title": "重置引导并重载",
+        "title": "完全重置并重载",
         "category": "维护"
       }
     ],
@@ -274,6 +279,10 @@
       ],
       "commandPalette": [
         {
+          "command": "tieba.quickStart",
+          "when": "true"
+        },
+        {
           "command": "tieba.openOnboarding",
           "when": "true"
         },
@@ -291,11 +300,15 @@
         },
         {
           "command": "tieba.installAiotieba",
+          "when": "false"
+        },
+        {
+          "command": "tieba.installPython",
           "when": "true"
         },
         {
           "command": "tieba.openPythonDownload",
-          "when": "true"
+          "when": "false"
         },
         {
           "command": "tieba.openThreadByUrl",
@@ -331,11 +344,11 @@
         },
         {
           "command": "tieba.configureCookie",
-          "when": "true"
+          "when": "false"
         },
         {
           "command": "tieba.clearCookie",
-          "when": "true"
+          "when": "false"
         },
         {
           "command": "tieba.resetOnboardingAndReload",
@@ -412,10 +425,15 @@
           "default": "active",
           "description": "打开帖子时是在当前分组还是旁边分组。"
         },
-        "tieba.fallbackToBrowser": {
+        "tieba.autoInstallEnhancement": {
           "type": "boolean",
           "default": true,
-          "description": "抓取失败时，界面中展示在浏览器里打开的回退入口。"
+          "description": "首次激活扩展时，如果本机已有 Python 但缺少阅读增强组件，则自动安装。"
+        },
+        "tieba.autoInstallPython": {
+          "type": "boolean",
+          "default": true,
+          "description": "首次激活扩展时，如果缺少 Python，则主动提示一键安装。安装前仍会询问用户确认。"
         },
         "tieba.pythonPath": {
           "type": "string",

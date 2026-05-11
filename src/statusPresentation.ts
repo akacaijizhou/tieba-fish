@@ -15,63 +15,61 @@ export function getTiebaHumanStatus(report: TiebaDiagnosticsReport): TiebaHumanS
   const sourceKnown = report.lastResolvedSource;
   const sourceDescription =
     !report.bridge.pythonAvailable
-      ? "当前还没有 Python，结构化阅读主路径还没准备好。"
+      ? "可以先用基础模式阅读；想要更稳定时再安装阅读增强组件。"
       : !report.bridge.available
-        ? "Python 已经可用，但结构化阅读链路还缺 aiotieba。"
+        ? "可以先用基础模式阅读；阅读增强组件可稍后安装。"
         : sourceKnown === "aiotieba"
-          ? "当前优先走结构化阅读。"
+          ? "当前正在使用更稳定的增强模式。"
           : sourceKnown === "web"
-            ? "当前能正常用，但最近一次走的是网页回退。"
-            : "打开一个吧或帖子后，这里会显示实际使用的链路。";
+            ? "当前正在使用基础模式，能正常看帖。"
+            : "打开一个吧或帖子后，这里会显示实际阅读模式。";
 
   return {
     readingLabel: !report.bridge.pythonAvailable
-      ? "先装 Python"
+      ? "可先试用"
       : !report.bridge.available
-        ? "先装 aiotieba"
+        ? "可先试用"
         : report.hasBduss
-          ? "可直接阅读"
-          : "匿名可读",
+          ? "可直接看帖"
+          : "可先试读",
     readingDescription: !report.bridge.pythonAvailable
-      ? "先把 Python 装好，再回来安装 aiotieba。"
+      ? "不用先配置环境，直接添加贴吧或粘贴帖子链接也能开始。"
       : !report.bridge.available
-        ? "当前还能用网页回退，但结构化阅读还没装好。"
+        ? "不用先安装增强组件，直接添加贴吧或粘贴帖子链接也能开始。"
         : report.hasBduss
-          ? "阅读已经可用，不需要再先理解 BDUSS 或 STOKEN。"
-          : "不导入登录态也能试用，但稳定性会差一些。",
+          ? "阅读已经可用，日常直接从左侧入口打开即可。"
+          : "不登录也能试用；想同步关注吧时再导入贴吧登录。",
     syncLabel: report.hasBduss && report.hasStoken
       ? "可以同步"
       : report.hasBduss
-        ? "补齐完整 Cookie 后可同步"
-        : "导入登录态后可同步",
+        ? "需要完整登录"
+        : "登录后可同步",
     syncDescription: report.hasBduss && report.hasStoken
       ? "现在可以把贴吧账号里的关注吧直接导进来。"
       : report.hasBduss
-        ? "当前还缺 STOKEN，所以同步关注吧还不能用。"
-        : "先导入完整 Cookie，再同步关注吧。",
+        ? "如果同步失败，重新导入一次完整 Cookie。"
+        : "只看帖可以跳过；想导入账号关注列表时再登录。",
     sourceLabel: !report.bridge.pythonAvailable
-      ? "还没准备好"
+      ? "基础模式"
       : !report.bridge.available
-        ? "等待安装 aiotieba"
+        ? "基础模式"
         : sourceKnown === "aiotieba"
-          ? "结构化阅读"
+          ? "增强模式"
           : sourceKnown === "web"
-            ? "网页回退"
+            ? "基础模式"
             : "等待首次读取",
     sourceDescription,
     loginLabel: !report.hasBduss
-      ? "还没导入"
+      ? "未登录"
       : !report.hasStoken
-        ? "基础登录态"
-        : report.hasCookie
-          ? "完整登录态 + Cookie"
-          : "完整登录态",
+        ? "已登录，待补完整 Cookie"
+        : "已登录",
     loginDescription: !report.hasBduss
-      ? "当前处于匿名状态。"
+      ? "当前不影响试读。"
       : !report.hasStoken
-        ? "现在能看帖，但还不能同步关注吧。"
+        ? "现在能看帖；如果同步关注吧失败，再重新导入完整 Cookie。"
         : report.hasCookie
-          ? "结构化阅读和网页回退都会更稳。"
-          : "结构化阅读和同步已经都可用。"
+          ? "阅读和同步都会复用这份登录。"
+          : "阅读和同步已经可用。"
   };
 }

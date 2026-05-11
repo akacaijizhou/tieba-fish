@@ -268,6 +268,28 @@ def author_id_value(user: Any, fallback_author_id: int | None = None) -> str | N
     return None
 
 
+def collect_user_name_map(*users: Any) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for user in users:
+        user_id = author_id_value(user)
+        if user_id:
+            mapping[user_id] = author_name(user)
+    return mapping
+
+
+def comment_reply_target(comment: Any, known_users: dict[str, str]) -> dict[str, str]:
+    reply_to_id = getattr(comment, "reply_to_id", 0) or 0
+    if not reply_to_id:
+        return {}
+
+    reply_to_id_text = str(reply_to_id)
+    reply_to_name = known_users.get(reply_to_id_text)
+    return {
+        "replyToId": reply_to_id_text,
+        **({"replyToName": reply_to_name} if reply_to_name else {}),
+    }
+
+
 def handle_health_check(tb: Any) -> dict[str, Any]:
     module_file = pathlib.Path(getattr(tb, "__file__", "")).resolve() if getattr(tb, "__file__", "") else None
     module_path = str(module_file) if module_file else ""
@@ -306,6 +328,10 @@ def map_comment_preview(post: Any) -> dict[str, Any] | None:
     if not comments and reply_num <= 0:
         return None
 
+    known_users = collect_user_name_map(
+        getattr(post, "user", None),
+        *(getattr(comment, "user", None) for comment in comments),
+    )
     items = []
     for comment in comments[:3]:
         rendered = render_contents(getattr(comment, "contents", None))
@@ -315,6 +341,7 @@ def map_comment_preview(post: Any) -> dict[str, Any] | None:
                 "contentHtml": rendered["html"],
                 "contentText": getattr(comment, "text", "") or rendered["text"],
                 "isLz": bool(getattr(comment, "is_thread_author", False)),
+                **comment_reply_target(comment, known_users),
             }
         )
 
@@ -343,12 +370,14 @@ def map_post(post: Any) -> dict[str, Any]:
     }
 
 
-def map_comment(comment: Any) -> dict[str, Any]:
+def map_comment(comment: Any, known_users: dict[str, str] | None = None) -> dict[str, Any]:
     created_at = int(getattr(comment, "create_time", 0) or 0)
     rendered = render_contents(getattr(comment, "contents", None))
+    known_users = known_users or {}
     return {
         "authorName": author_name(getattr(comment, "user", None)),
         "authorId": author_id_value(getattr(comment, "user", None)),
+        **comment_reply_target(comment, known_users),
         "contentHtml": rendered["html"],
         "contentText": getattr(comment, "text", "") or rendered["text"],
         "createdAt": created_at * 1000 if created_at else None,
@@ -443,6 +472,11 @@ async def handle_get_post_comments(tb: Any, request: dict[str, Any]) -> dict[str
     total = int(getattr(page_info, "total_count", 0) or len(comments))
     current_page = int(getattr(page_info, "current_page", 0) or page)
     total_page = int(getattr(page_info, "total_page", 0) or 0)
+    known_users = collect_user_name_map(
+        getattr(getattr(comments, "post", None), "user", None),
+        getattr(getattr(comments, "thread", None), "user", None),
+        *(getattr(comment, "user", None) for comment in comments),
+    )
     return {
         "postId": str(post_id),
         "page": current_page,
@@ -450,7 +484,7 @@ async def handle_get_post_comments(tb: Any, request: dict[str, Any]) -> dict[str
         "hasPrev": bool(getattr(page_info, "has_prev", False)),
         "hasMore": bool(getattr(page_info, "has_more", False)),
         "total": total,
-        "items": [map_comment(comment) for comment in comments],
+        "items": [map_comment(comment, known_users) for comment in comments],
     }
 
 

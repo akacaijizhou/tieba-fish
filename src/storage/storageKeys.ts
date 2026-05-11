@@ -8,6 +8,8 @@ export const STORAGE_KEYS = {
   onboardingSeen: "tieba.onboardingSeen",
   onboardingForceNextOpen: "tieba.onboardingForceNextOpen",
   aiotiebaInstallPromptShown: "tieba.aiotiebaInstallPromptShown",
+  aiotiebaAutoInstallAttempted: "tieba.aiotiebaAutoInstallAttempted",
+  aiotiebaAutoInstallAttemptKey: "tieba.aiotiebaAutoInstallAttemptKey",
   forumCache: "tieba.cache.forumThreads",
   threadCache: "tieba.cache.threadDetail"
 } as const;

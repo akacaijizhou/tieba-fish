@@ -214,11 +214,8 @@ export class ThreadPanelManager {
             }
           }
           break;
-        case "openExternal":
-          await vscode.commands.executeCommand("tieba.openExternal", thread);
-          break;
-        case "openInSimpleBrowser":
-          await vscode.commands.executeCommand("tieba.openInSimpleBrowser", thread);
+        case "openDiagnostics":
+          await vscode.commands.executeCommand("tieba.openDiagnostics");
           break;
         case "installAiotieba": {
           const installed = await vscode.commands.executeCommand<boolean>("tieba.installAiotieba");

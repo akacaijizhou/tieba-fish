@@ -31,8 +31,7 @@ export class SettingsStore {
       themePreset,
       cacheMinutes: config.get<number>("cacheMinutes", 3),
       maxHistory: config.get<number>("maxHistory", 100),
-      openThreadMode: config.get<"active" | "beside">("openThreadMode", "active"),
-      fallbackToBrowser: config.get<boolean>("fallbackToBrowser", true)
+      openThreadMode: config.get<"active" | "beside">("openThreadMode", "active")
     };
   }
 

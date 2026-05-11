@@ -74,6 +74,11 @@ export interface PythonRuntimeCheckResult {
   executable?: string;
 }
 
+export interface PythonInstallResult {
+  installed: boolean;
+  method: "winget" | "existing";
+}
+
 export interface BridgeSelfFollowForum {
   forumId?: string;
   forumName: string;
@@ -159,12 +164,8 @@ export class PythonAiotiebaDataSource implements TiebaDataSource {
           executable: attempt.command
         };
       } catch (error) {
-        if (isCommandNotFoundError(error)) {
-          lastProcessError = error;
-          continue;
-        }
-
-        throw new TiebaError("bridge", "Python 可执行文件存在，但探测运行时失败。", error);
+        lastProcessError = error instanceof Error ? error : undefined;
+        continue;
       }
     }
 
@@ -203,22 +204,22 @@ export class PythonAiotiebaDataSource implements TiebaDataSource {
         );
         return;
       } catch (error) {
-        if (isCommandNotFoundError(error)) {
-          lastProcessError = error;
+        if (isUnavailablePythonAttemptError(error)) {
+          lastProcessError = error instanceof Error ? error : undefined;
           continue;
         }
 
         if (error instanceof TiebaError) {
           throw new TiebaError(
             "bridge",
-            "安装 aiotieba 失败。请确认网络可访问 PyPI，并优先使用官方 Python 3.12/3.13。当前安装流程只接受预编译 wheel，不再走本地源码编译。",
+            "安装阅读增强组件失败。请确认网络可访问 PyPI，并优先使用官方 Python 3.12/3.13。当前安装流程只接受预编译 wheel，不再走本地源码编译。",
             error.causeValue ?? error.message
           );
         }
 
         throw new TiebaError(
           "bridge",
-          "安装 aiotieba 失败。请确认网络可访问 PyPI，并优先使用官方 Python 3.12/3.13。当前安装流程只接受预编译 wheel，不再走本地源码编译。",
+          "安装阅读增强组件失败。请确认网络可访问 PyPI，并优先使用官方 Python 3.12/3.13。当前安装流程只接受预编译 wheel，不再走本地源码编译。",
           error
         );
       }
@@ -230,6 +231,51 @@ export class PythonAiotiebaDataSource implements TiebaDataSource {
       `没有找到可用的 Python 解释器：${target}。请先安装 Python，或把 tieba.pythonPath 改成正确的命令。`,
       lastProcessError
     );
+  }
+
+  async installPythonRuntime(): Promise<PythonInstallResult> {
+    try {
+      await this.checkPythonRuntime();
+      return {
+        installed: true,
+        method: "existing"
+      };
+    } catch {
+      // Continue with winget installation when Python is not usable yet.
+    }
+
+    await runSimpleCommandAttemptUntil(
+      "winget",
+      [
+        "install",
+        "--exact",
+        "--id",
+        "Python.Python.3.13",
+        "--scope",
+        "user",
+        "--accept-package-agreements",
+        "--accept-source-agreements",
+        "--disable-interactivity",
+        "--override",
+        "/quiet InstallAllUsers=0 PrependPath=1 Include_launcher=0 InstallLauncherAllUsers=0 Include_pip=1 Include_doc=0 Include_test=0 Include_tcltk=0 Include_dev=0"
+      ],
+      600_000,
+      "Python 安装命令执行超时。",
+      "Python 安装命令执行失败。",
+      async () => {
+        try {
+          await this.checkPythonRuntime();
+          return true;
+        } catch {
+          return false;
+        }
+      }
+    );
+
+    return {
+      installed: true,
+      method: "winget"
+    };
   }
 
   async getSelfFollowForumsAll(pageSize = 200): Promise<BridgeSelfFollowForum[]> {
@@ -361,6 +407,16 @@ function runSingleBridgeAttempt<T>(
 }
 
 function runSimplePythonAttempt(command: string, args: string[], timeoutMs: number): Promise<string> {
+  return runSimpleCommandAttempt(command, args, timeoutMs, "Python 命令执行超时。", "Python 命令执行失败");
+}
+
+function runSimpleCommandAttempt(
+  command: string,
+  args: string[],
+  timeoutMs: number,
+  timeoutMessage: string,
+  failurePrefix: string
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = cp.spawn(command, args, {
       cwd: path.dirname(path.dirname(path.dirname(__dirname))),
@@ -369,7 +425,7 @@ function runSimplePythonAttempt(command: string, args: string[], timeoutMs: numb
 
     const timer = setTimeout(() => {
       child.kill();
-      reject(new TiebaError("bridge", "Python 命令执行超时。"));
+      reject(new TiebaError("bridge", timeoutMessage));
     }, timeoutMs);
 
     let stdout = "";
@@ -402,16 +458,139 @@ function runSimplePythonAttempt(command: string, args: string[], timeoutMs: numb
       reject(
         new TiebaError(
           "bridge",
-          stderr.trim() || stdout.trim() || `Python 命令执行失败，exit code=${code ?? "unknown"}。`
+          stderr.trim() || stdout.trim() || `${failurePrefix}，exit code=${code ?? "unknown"}。`
         )
       );
     });
   });
 }
 
+function runSimpleCommandAttemptUntil(
+  command: string,
+  args: string[],
+  timeoutMs: number,
+  timeoutMessage: string,
+  failurePrefix: string,
+  isSuccessful: () => Promise<boolean>
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = cp.spawn(command, args, {
+      cwd: path.dirname(path.dirname(path.dirname(__dirname))),
+      windowsHide: true
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    let checkingSuccess = false;
+
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      clearInterval(successTimer);
+      child.stdout.removeAllListeners("data");
+      child.stderr.removeAllListeners("data");
+      child.removeAllListeners("error");
+      child.removeAllListeners("close");
+      child.unref();
+    };
+
+    const finishResolve = (value: string): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+
+    const finishReject = (error: unknown): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+
+    const finishIfSuccessful = async (): Promise<boolean> => {
+      if (settled || checkingSuccess) {
+        return settled;
+      }
+
+      checkingSuccess = true;
+      try {
+        if (await isSuccessful()) {
+          finishResolve(stdout);
+          return true;
+        }
+        return false;
+      } finally {
+        checkingSuccess = false;
+      }
+    };
+
+    const timer = setTimeout(() => {
+      void (async () => {
+        if (await finishIfSuccessful()) {
+          return;
+        }
+        child.kill();
+        finishReject(new TiebaError("bridge", timeoutMessage));
+      })();
+    }, timeoutMs);
+
+    const successTimer = setInterval(() => {
+      void finishIfSuccessful();
+    }, 3_000);
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+
+    child.on("error", (error) => {
+      finishReject(error);
+    });
+
+    child.on("close", (code) => {
+      void (async () => {
+        if (settled) {
+          return;
+        }
+
+        if (code === 0 || (await finishIfSuccessful())) {
+          finishResolve(stdout);
+          return;
+        }
+
+        finishReject(
+          new TiebaError(
+            "bridge",
+            stderr.trim() || stdout.trim() || `${failurePrefix}，exit code=${code ?? "unknown"}。`
+          )
+        );
+      })();
+    });
+  });
+}
+
 function buildPythonAttempts(configuredPath: string): Array<{ command: string; argsPrefix: string[] }> {
   const commands = new Set<string>();
-  for (const candidate of [configuredPath.trim(), "python", "py"]) {
+  const configured = configuredPath.trim();
+  const configuredBase = path.basename(configured).toLowerCase();
+  const configuredIsGeneric = configuredBase === "python" || configuredBase === "python.exe" || configuredBase === "py" || configuredBase === "py.exe";
+  for (const candidate of [
+    configured && !configuredIsGeneric ? configured : "",
+    ...getCommonPythonExecutablePaths(),
+    "py",
+    "python"
+  ]) {
     if (candidate) {
       commands.add(candidate);
     }
@@ -423,6 +602,26 @@ function buildPythonAttempts(configuredPath: string): Array<{ command: string; a
   }));
 }
 
+function getCommonPythonExecutablePaths(): string[] {
+  const localAppData = process.env.LOCALAPPDATA;
+  const programFiles = process.env.ProgramFiles;
+  const candidates: string[] = [];
+
+  for (const root of [localAppData && path.join(localAppData, "Programs", "Python"), programFiles]) {
+    if (!root) {
+      continue;
+    }
+
+    candidates.push(
+      path.join(root, "Python313", "python.exe"),
+      path.join(root, "Python312", "python.exe"),
+      path.join(root, "Python311", "python.exe")
+    );
+  }
+
+  return candidates;
+}
+
 function isPyLauncher(command: string): boolean {
   const base = path.basename(command).toLowerCase();
   return base === "py" || base === "py.exe";
@@ -430,6 +629,15 @@ function isPyLauncher(command: string): boolean {
 
 function isCommandNotFoundError(error: unknown): error is NodeJS.ErrnoException {
   return Boolean(error && typeof error === "object" && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT");
+}
+
+function isUnavailablePythonAttemptError(error: unknown): boolean {
+  if (isCommandNotFoundError(error)) {
+    return true;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  return /no installed python|python was not found|没有找到可用的 Python|没有找到 Python|python 命令执行失败/i.test(message);
 }
 
 function normalizeBridgeErrorCode(code?: string): TiebaErrorCode {

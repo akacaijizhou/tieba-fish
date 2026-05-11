@@ -166,7 +166,7 @@ body[data-page="utility"] .desc {
 body[data-page="utility"] .hero {
   padding: 18px 20px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 8px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 82%, var(--accent) 18%), transparent 160px),
     var(--surface);
@@ -189,7 +189,7 @@ body[data-page="utility"] .status-card,
 body[data-page="utility"] .card {
   display: block;
   padding: 14px 15px;
-  border-radius: 12px;
+  border-radius: 8px;
   border: 1px solid var(--line);
   background: var(--surface);
 }
@@ -202,6 +202,11 @@ body[data-page="utility"] .action-card {
 body[data-page="utility"] .action-card:hover {
   border-color: color-mix(in srgb, var(--accent) 44%, var(--line));
   background: var(--surface-2);
+}
+
+body[data-page="utility"] .action-card.is-primary {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--line));
+  background: color-mix(in srgb, var(--surface-2) 82%, var(--accent) 18%);
 }
 
 body[data-page="utility"] .action-title,
@@ -420,6 +425,20 @@ body.hide-images .post-content img:not(.tieba-emoji) {
 .comment-thread .comment-meta {
   gap: 4px 10px;
   font-size: 11px;
+}
+
+.comment-reply-to {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: inherit;
+  font: inherit;
+}
+
+.comment-reply-word {
+  color: var(--reply-accent);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .comment-list {

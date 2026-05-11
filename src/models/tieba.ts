@@ -50,6 +50,8 @@ export interface PostItem {
       authorName: string;
       contentHtml: string;
       contentText?: string;
+      replyToName?: string;
+      replyToId?: string;
       isLz?: boolean;
     }>;
   };
@@ -59,6 +61,8 @@ export interface PostItem {
 export interface PostCommentItem {
   authorName: string;
   authorId?: string;
+  replyToName?: string;
+  replyToId?: string;
   contentHtml: string;
   contentText?: string;
   createdAt?: number;
@@ -126,7 +130,6 @@ export interface TiebaSettings {
   cacheMinutes: number;
   maxHistory: number;
   openThreadMode: "active" | "beside";
-  fallbackToBrowser: boolean;
 }
 
 export interface CacheEntry<T> {
@@ -136,10 +139,3 @@ export interface CacheEntry<T> {
   version: number;
 }
 
-export type OpenTarget =
-  | ForumSubscription
-  | ThreadSummary
-  | {
-      forumName: string;
-      url?: string;
-    };

@@ -96,7 +96,7 @@
             ? `<section class="state">${
                 state.page > 1
                   ? "这一页没有帖子，可以翻到别的页，或者回到上一页。"
-                  : "这个吧当前没有拿到帖子列表，可以先刷新一次；如果还不行，再试浏览器回退。"
+                  : "这个吧当前没有拿到帖子列表，可以先刷新一次；如果还不行，再打开环境诊断检查本机环境。"
               }</section>`
             : state.threads.map(renderThreadRow).join("")}
         </div>
@@ -116,9 +116,8 @@
         <div class="hint">${escapeHtml(state.error.message)}</div>
         <div class="toolbar">
           <button class="button" data-action="refresh">重试</button>
+          <button class="button" data-action="diagnostics">环境诊断</button>
           ${state.error?.showInstallAiotieba ? '<button class="button" data-action="installAiotieba">安装 aiotieba</button>' : ""}
-          <button class="button" data-action="browser">VS Code 浏览器</button>
-          <button class="button" data-action="external">系统浏览器</button>
         </div>
       </section>
     `;
@@ -142,8 +141,6 @@
             </div>
             <div class="toolbar">
               <button class="button" data-action="refresh"${state.loading ? " disabled" : ""}>刷新</button>
-              <button class="button" data-action="browser">VS Code 浏览器</button>
-              <button class="button" data-action="external">系统浏览器</button>
             </div>
           </div>
         </header>
@@ -169,11 +166,8 @@
         if (action === "installAiotieba") {
           send("installAiotieba");
         }
-        if (action === "browser") {
-          send("openInSimpleBrowser");
-        }
-        if (action === "external") {
-          send("openExternal");
+        if (action === "diagnostics") {
+          send("openDiagnostics");
         }
         if (action === "prev" && state.page > 1) {
           send("loadForumPage", { forumName: state.forumName, page: state.page - 1 });

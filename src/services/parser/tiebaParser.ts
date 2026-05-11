@@ -217,6 +217,7 @@ function parseCommentsPreview($: cheerio.CheerioAPI, node: cheerio.Cheerio<any>)
   for (const element of node.find(".lzl_single_post,.lzl-post,.j_lzl_single_post").toArray()) {
     const item = $(element);
     const authorName = normalizeText(item.find(".j_user_card,.lzl_content_reply,.lzl_author_name").first().text());
+    const replyToName = parseCommentReplyToName($, item, authorName);
     const contentNode = item.find(".lzl_content_main,.lzl_content_reply").last();
     const sanitized = sanitizeContent(contentNode);
     if (!authorName || (!sanitized.contentHtml && !sanitized.contentText)) {
@@ -226,7 +227,8 @@ function parseCommentsPreview($: cheerio.CheerioAPI, node: cheerio.Cheerio<any>)
     items.push({
       authorName,
       contentHtml: sanitized.contentHtml || escapeHtml(sanitized.contentText || ""),
-      contentText: sanitized.contentText
+      contentText: sanitized.contentText,
+      ...(replyToName ? { replyToName } : {})
     });
 
     if (items.length >= 3) {
@@ -245,6 +247,33 @@ function parseCommentsPreview($: cheerio.CheerioAPI, node: cheerio.Cheerio<any>)
     total: totalMatch ? Number(totalMatch[0]) : items.length,
     items
   };
+}
+
+function parseCommentReplyToName(
+  $: cheerio.CheerioAPI,
+  item: cheerio.Cheerio<any>,
+  authorName?: string
+): string | undefined {
+  const replyNode = item.find(".lzl_content_reply").first();
+  const explicitTarget =
+    normalizeText(replyNode.find(".j_user_card,a").first().attr("username") ?? "") ??
+    normalizeText(replyNode.find(".j_user_card,a").first().text());
+  if (explicitTarget && explicitTarget !== authorName) {
+    return stripAtPrefix(explicitTarget);
+  }
+
+  const replyText = normalizeText(replyNode.text());
+  const matched = replyText?.match(/^回复\s+(.+?)(?:\s*[:：]|$)/u);
+  if (!matched?.[1]) {
+    return undefined;
+  }
+
+  const target = stripAtPrefix(normalizeText(matched[1]) ?? "");
+  return target && target !== authorName ? target : undefined;
+}
+
+function stripAtPrefix(value: string): string {
+  return value.replace(/^@+/, "").trim();
 }
 
 function escapeHtml(input: string): string {
